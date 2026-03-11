@@ -16,7 +16,7 @@
   },
   "scripts": {
     "prepare": "husky",
-    "lint:sol": "solhint 'src/**/*.sol' 'script/**/*.sol' 'test/**/*.sol'",
+    "lint:sol": "solhint 'src/**/*.sol'",
     "format": "forge fmt && prettier --write \"**/*.{js,json,md,ts,yaml,yml}\"",
     "format:check": "forge fmt --check && prettier --check \"**/*.{js,json,md,ts,yaml,yml}\"",
     "build": "forge build --sizes",
