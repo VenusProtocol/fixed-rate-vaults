@@ -6,9 +6,9 @@ import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/trans
 import {
     IAccessControlManagerV8
 } from "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
-import { ForkTest } from "./ForkTest.sol";
+import { Test } from "forge-std/Test.sol";
 
-contract CounterForkTest is ForkTest {
+contract CounterForkTest is Test {
     Counter public counter;
     uint256 bscFork;
 
@@ -16,8 +16,12 @@ contract CounterForkTest is ForkTest {
     address public accessControlManager = makeAddr("acm");
     address public user = makeAddr("user");
 
-    function setUp() public override {
-        super.setUp();
+    function setUp() public {
+        string memory forkEnabled = vm.envOr("FORK_ENABLED", string("false"));
+        if (keccak256(bytes(forkEnabled)) != keccak256(bytes("true"))) {
+            vm.skip(true);
+            return;
+        }
 
         bscFork = vm.createFork("bsc_mainnet", 85_834_131);
         vm.selectFork(bscFork);
