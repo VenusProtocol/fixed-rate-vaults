@@ -1,0 +1,21 @@
+{
+  "name": "@venusprotocol/fixed-rate-vaults",
+  "version": "1.0.0",
+  "repository": "git@github-venus:VenusProtocol/fixed-rate-vaults.git",
+  "author": "",
+  "license": "ISC",
+  "packageManager": "yarn@3.2.0",
+  "scripts": {
+    "prepare": "husky",
+    "lint:sol": "solhint 'src/**/*.sol' 'script/**/*.sol' 'test/**/*.sol'",
+    "format": "forge fmt && prettier --write \"**/*.{js,json,md,ts,yaml,yml}\"",
+    "format:check": "forge fmt --check && prettier --check \"**/*.{js,json,md,ts,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.1",
+    "solhint": "^6.0.3"
+  }
+}
