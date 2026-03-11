@@ -24,7 +24,9 @@ library Addresses {
         });
     }
 
-    function getByChainId(uint256 chainId) internal pure returns (NetworkAddresses memory) {
+    function getByChainId(
+        uint256 chainId
+    ) internal pure returns (NetworkAddresses memory) {
         if (chainId == 56) return bscMainnet();
         if (chainId == 97) return bscTestnet();
         revert("Addresses: unsupported chain");

@@ -11,12 +11,16 @@ contract Counter is AccessControlledV8 {
         _disableInitializers();
     }
 
-    function initialize(address accessControlManager_) external initializer {
+    function initialize(
+        address accessControlManager_
+    ) external initializer {
         __AccessControlled_init(accessControlManager_);
         number = 0;
     }
 
-    function setNumber(uint256 newNumber) external {
+    function setNumber(
+        uint256 newNumber
+    ) external {
         _checkAccessAllowed("setNumber(uint256)");
         number = newNumber;
     }

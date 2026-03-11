@@ -4,8 +4,9 @@ pragma solidity 0.8.25;
 import { Test } from "forge-std/Test.sol";
 import { Counter } from "../src/Counter.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import { IAccessControlManagerV8 } from
-    "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
+import {
+    IAccessControlManagerV8
+} from "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
 
 contract CounterTest is Test {
     Counter public counter;
@@ -49,7 +50,9 @@ contract CounterTest is Test {
         assertEq(counter.number(), 42);
     }
 
-    function testFuzz_SetNumber(uint256 x) public {
+    function testFuzz_SetNumber(
+        uint256 x
+    ) public {
         vm.prank(user);
         counter.setNumber(x);
         assertEq(counter.number(), x);

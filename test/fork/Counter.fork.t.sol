@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity 0.8.25;
 
-import { Test } from "forge-std/Test.sol";
-import { Counter } from "../src/Counter.sol";
+import { Counter } from "../../src/Counter.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import { IAccessControlManagerV8 } from
-    "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
+import {
+    IAccessControlManagerV8
+} from "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
+import { ForkTest } from "./ForkTest.sol";
 
-contract CounterForkTest is Test {
+contract CounterForkTest is ForkTest {
     Counter public counter;
     uint256 bscFork;
 
@@ -15,8 +16,10 @@ contract CounterForkTest is Test {
     address public accessControlManager = makeAddr("acm");
     address public user = makeAddr("user");
 
-    function setUp() public {
-        bscFork = vm.createFork("bsc_mainnet", 85834131);
+    function setUp() public override {
+        super.setUp();
+
+        bscFork = vm.createFork("bsc_mainnet", 85_834_131);
         vm.selectFork(bscFork);
 
         // Mock ACM to allow all calls

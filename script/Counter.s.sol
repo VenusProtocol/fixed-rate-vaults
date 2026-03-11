@@ -19,11 +19,8 @@ contract CounterScript is Script {
 
         // Deploy proxy with initialize call
         bytes memory initData = abi.encodeCall(Counter.initialize, (addrs.accessControlManager));
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
-            address(implementation),
-            addrs.proxyAdmin,
-            initData
-        );
+        TransparentUpgradeableProxy proxy =
+            new TransparentUpgradeableProxy(address(implementation), addrs.proxyAdmin, initData);
         console.log("Proxy deployed at:", address(proxy));
 
         vm.stopBroadcast();

@@ -46,6 +46,7 @@ cp .env.example .env
 ```
 
 Required variables:
+
 - `PRIVATE_KEY` — deployer private key
 - `ETHERSCAN_API_KEY` — for contract verification (Etherscan V2 API key works across chains)
 - `RPC_URL_*` — RPC endpoints for each network
