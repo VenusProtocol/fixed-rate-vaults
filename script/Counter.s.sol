@@ -3,7 +3,7 @@ pragma solidity 0.8.25;
 
 import { Script, console } from "forge-std/Script.sol";
 import { Counter } from "../src/Counter.sol";
-import { Addresses } from "../src/Addresses.sol";
+import { Addresses } from "../src/lib/Addresses.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract CounterScript is Script {
