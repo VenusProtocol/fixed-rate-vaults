@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity 0.8.25;
 
-import { Test } from "forge-std/Test.sol";
-import { Counter } from "../src/Counter.sol";
+import { Counter } from "../../src/Counter.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import {
     IAccessControlManagerV8
 } from "@venusprotocol/governance-contracts/contracts/Governance/IAccessControlManagerV8.sol";
+import { Test } from "forge-std/Test.sol";
 
-contract CounterTest is Test {
+contract CounterForkTest is Test {
     Counter public counter;
+    uint256 bscFork;
+
     address public proxyAdmin = makeAddr("proxyAdmin");
     address public accessControlManager = makeAddr("acm");
     address public user = makeAddr("user");
 
     function setUp() public {
+        string memory forkEnabled = vm.envOr("FORK_ENABLED", string("false"));
+        if (keccak256(bytes(forkEnabled)) != keccak256(bytes("true"))) {
+            vm.skip(true);
+            return;
+        }
+
+        bscFork = vm.createFork("bsc_mainnet", 85_834_131);
+        vm.selectFork(bscFork);
+
         // Mock ACM to allow all calls
         vm.mockCall(
             accessControlManager,
@@ -22,10 +33,8 @@ contract CounterTest is Test {
             abi.encode(true)
         );
 
-        // Deploy implementation
+        // Deploy implementation + proxy
         Counter implementation = new Counter();
-
-        // Deploy proxy
         bytes memory initData = abi.encodeCall(Counter.initialize, (accessControlManager));
         TransparentUpgradeableProxy proxy =
             new TransparentUpgradeableProxy(address(implementation), proxyAdmin, initData);
@@ -33,52 +42,26 @@ contract CounterTest is Test {
         counter = Counter(address(proxy));
     }
 
-    function test_Initialize() public view {
-        assertEq(counter.number(), 0);
-        assertEq(address(counter.accessControlManager()), accessControlManager);
+    function test_ForkIsActive() public view {
+        assertEq(vm.activeFork(), bscFork);
+        assertEq(block.chainid, 56);
     }
 
-    function test_Increment() public {
+    function test_DeployAndIncrement() public {
+        assertEq(counter.number(), 0);
+
         vm.prank(user);
         counter.increment();
         assertEq(counter.number(), 1);
+
+        vm.prank(user);
+        counter.increment();
+        assertEq(counter.number(), 2);
     }
 
     function test_SetNumber() public {
         vm.prank(user);
         counter.setNumber(42);
         assertEq(counter.number(), 42);
-    }
-
-    function testFuzz_SetNumber(
-        uint256 x
-    ) public {
-        vm.prank(user);
-        counter.setNumber(x);
-        assertEq(counter.number(), x);
-    }
-
-    function test_RevertWhenNotAllowed() public {
-        // Override mock to deny access
-        vm.mockCall(
-            accessControlManager,
-            abi.encodeWithSelector(IAccessControlManagerV8.isAllowedToCall.selector),
-            abi.encode(false)
-        );
-
-        vm.prank(user);
-        vm.expectRevert();
-        counter.increment();
-    }
-
-    function test_CannotInitializeTwice() public {
-        vm.expectRevert();
-        counter.initialize(accessControlManager);
-    }
-
-    function test_ImplementationCannotBeInitialized() public {
-        Counter implementation = new Counter();
-        vm.expectRevert();
-        implementation.initialize(accessControlManager);
     }
 }

@@ -4,5 +4,23 @@
       "name": "v1.15.0",
       "rev": "0844d7e1fc5e60d77b68e469bff60265f236c398"
     }
+  },
+  "lib/governance-contracts": {
+    "tag": {
+      "name": "v2.13.0",
+      "rev": "f8d3efe9578c8cd11330181bb4396f6b449e654c"
+    }
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v4.9.6",
+      "rev": "dc44c9f1a4c3b10af99492eed84f83ed244203f6"
+    }
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "tag": {
+      "name": "v4.9.6",
+      "rev": "2d081f24cac1a867f6f73d512f2022e1fa987854"
+    }
   }
 }

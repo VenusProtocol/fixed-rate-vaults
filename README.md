@@ -1,66 +1,83 @@
-## Foundry
+# Fixed Rate Vaults
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Smart contracts for fixed-rate lending vaults built on the [Venus Protocol](https://venus.io) ecosystem.
 
-Foundry consists of:
+## Overview
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+Fixed Rate Vaults enable users to lock in fixed interest rates for borrowing and lending within the Venus Protocol. These contracts provide predictable yield and borrowing costs by abstracting the variable-rate nature of the underlying Venus markets.
 
-## Documentation
+## Development
 
-https://book.getfoundry.sh/
+### Prerequisites
 
-## Usage
+- [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- Solidity 0.8.25
 
 ### Build
 
 ```shell
-$ forge build
+forge build
 ```
 
 ### Test
 
 ```shell
-$ forge test
+forge test
 ```
 
 ### Format
 
 ```shell
-$ forge fmt
+forge fmt
 ```
 
 ### Gas Snapshots
 
 ```shell
-$ forge snapshot
+forge snapshot
 ```
 
-### Anvil
+### Environment Setup
+
+Copy `.env.example` to `.env` and fill in your values:
 
 ```shell
-$ anvil
+cp .env.example .env
 ```
+
+Required variables:
+
+- `PRIVATE_KEY` — deployer private key
+- `ETHERSCAN_API_KEY` — for contract verification (Etherscan V2 API key works across chains)
+- `RPC_URL_*` — RPC endpoints for each network
 
 ### Deploy
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+The `PRIVATE_KEY` is loaded from `.env` inside the deploy script via `vm.envUint("PRIVATE_KEY")`, so no need to pass it on the command line:
+
+```solidity
+uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+vm.startBroadcast(deployerPrivateKey);
 ```
 
-### Cast
-
 ```shell
-$ cast <subcommand>
+forge script script/Counter.s.sol:CounterScript --rpc-url bsc_testnet --broadcast --verify
 ```
 
-### Help
+Alternatively, you can skip `vm.envUint` in the script and pass the key directly:
 
 ```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+forge script script/Counter.s.sol:CounterScript --rpc-url bsc_testnet --private-key $PRIVATE_KEY --broadcast --verify
 ```
+
+### Verify
+
+```shell
+forge verify-contract <contract-address> <ContractName> --chain bsc_testnet
+```
+
+## Links
+
+- [Venus Protocol](https://venus.io)
+- [Venus GitHub](https://github.com/VenusProtocol)
+- [Foundry Book](https://book.getfoundry.sh/)

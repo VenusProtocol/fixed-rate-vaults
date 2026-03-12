@@ -1,18 +1,27 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity 0.8.25;
 
-import {Script} from "forge-std/Script.sol";
-import {Counter} from "../src/Counter.sol";
+import { Script, console } from "forge-std/Script.sol";
+import { Counter } from "../src/Counter.sol";
+import { Addresses } from "../src/Addresses.sol";
+import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract CounterScript is Script {
-    Counter public counter;
-
-    function setUp() public {}
-
     function run() public {
-        vm.startBroadcast();
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        Addresses.NetworkAddresses memory addrs = Addresses.getByChainId(block.chainid);
 
-        counter = new Counter();
+        vm.startBroadcast(deployerPrivateKey);
+
+        // Deploy implementation
+        Counter implementation = new Counter();
+        console.log("Implementation deployed at:", address(implementation));
+
+        // Deploy proxy with initialize call
+        bytes memory initData = abi.encodeCall(Counter.initialize, (addrs.accessControlManager));
+        TransparentUpgradeableProxy proxy =
+            new TransparentUpgradeableProxy(address(implementation), addrs.proxyAdmin, initData);
+        console.log("Proxy deployed at:", address(proxy));
 
         vm.stopBroadcast();
     }

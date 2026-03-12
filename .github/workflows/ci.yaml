@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Check formatting
+        run: yarn format:check
+
+      - name: Lint Solidity
+        run: yarn lint:sol
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Show Forge version
+        run: forge --version
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Run tests
+        run: forge test -vvv
+
+  export-deployments:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.VENUS_TOOLS_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Export deployment addresses from broadcast files
+        shell: bash
+        run: |
+          mkdir -p deployments
+
+          declare -A NETWORKS
+          NETWORKS=(
+            ["bsc_testnet"]=97
+            ["bsc_mainnet"]=56
+            ["sepolia"]=11155111
+            ["ethereum"]=1
+            ["opbnb_testnet"]=5611
+            ["opbnb_mainnet"]=204
+            ["arbitrum_sepolia"]=421614
+            ["arbitrum_one"]=42161
+            ["op_sepolia"]=11155420
+            ["op_mainnet"]=10
+            ["base_sepolia"]=84532
+            ["base_mainnet"]=8453
+            ["unichain_sepolia"]=1301
+            ["unichain_mainnet"]=130
+          )
+
+          for NETWORK in "${!NETWORKS[@]}"; do
+            CHAIN_ID="${NETWORKS[$NETWORK]}"
+
+            # Only pick up real deployments (not dry-run)
+            BROADCAST_FILES=$(find broadcast -path "*/${CHAIN_ID}/run-latest.json" -not -path "*/dry-run/*" 2>/dev/null)
+
+            if [ -z "$BROADCAST_FILES" ]; then
+              continue
+            fi
+
+            # Extract contract names and addresses from all broadcast files for this chain
+            jq -s \
+              --arg name "$NETWORK" \
+              --argjson chainId "$CHAIN_ID" \
+              '{
+                name: $name,
+                chainId: $chainId,
+                addresses: (([.[].transactions[] | select(.transactionType == "CREATE") | {(.contractName): .contractAddress}] | add) // {})
+              }' $BROADCAST_FILES > "./deployments/${NETWORK}_addresses.json"
+          done
+
+          yarn format
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "feat: updating deployment files"
+          file_pattern: "deployments/*.json"
