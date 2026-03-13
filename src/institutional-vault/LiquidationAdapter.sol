@@ -7,7 +7,7 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
 
-import { VaultConfig } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig, RiskConfig } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 import { IProtocolShareReserve } from "../interfaces/IProtocolShareReserve.sol";
@@ -250,10 +250,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         // Clear leftover approval
         supplyAsset.forceApprove(vault, 0);
 
-        // Split seized collateral — cache riskConfig to pick incentive
-        uint256 incentive = isOverdue
-            ? v.riskConfig().latePenaltyRate
-            : v.riskConfig().liquidationIncentive;
+        // Split seized collateral
+        RiskConfig memory rc = v.riskConfig();
+        uint256 incentive = isOverdue ? rc.latePenaltyRate : rc.liquidationIncentive;
         _splitAndTransferCollateral(collateralAsset, seized, incentive, msg.sender);
     }
 

@@ -4,7 +4,7 @@ pragma solidity 0.8.25;
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 
 import { IInstitutionPositionToken } from "./IInstitutionPositionToken.sol";
-import { VaultConfig, RiskConfig, VaultRuntime, VaultState } from "./IInstitutionalVaultTypes.sol";
+import { VaultConfig, RiskConfig, VaultRuntime, VaultState, LiquidationType } from "./IInstitutionalVaultTypes.sol";
 
 /// @title IInstitutionalLoanVault
 /// @notice Interface for the Institutional Fixed-Rate Loan Vault (ERC-4626 + collateral + borrowing + liquidation).
@@ -129,4 +129,22 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
 
     /// @notice VaultController address.
     function vaultController() external view returns (address);
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Vault Liquidity & Seize Previews
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @notice Returns current liquidity and shortfall for the vault.
+    function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall);
+
+    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+    function getHypotheticalVaultLiquidity(
+        uint256 withdrawAmount
+    ) external view returns (uint256 liquidity, uint256 shortfall);
+
+    /// @notice Preview seize amount for a given repay and liquidation type.
+    function calculateSeizeAmount(
+        uint256 repayAmount,
+        LiquidationType liquidationType
+    ) external view returns (uint256);
 }

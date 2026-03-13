@@ -7,15 +7,13 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
 
-import { VaultConfig, RiskConfig, VaultState, VaultStateInfo, LiquidationType } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig, RiskConfig, VaultState, VaultStateInfo } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
-import { ILiquidationAdapter } from "../interfaces/ILiquidationAdapter.sol";
-import { AccountLiquidityLib } from "../lib/AccountLiquidityLib.sol";
 
 /// @title InstitutionalVaultController
 /// @notice Central orchestrator for the Institutional Vault system. Deploys vault clones, maintains the registry,
-///         holds the Venus ACM reference, and contains all risk validation logic.
+///         holds the Venus ACM reference, and proxies governance operations to vaults.
 /// @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
 contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     using SafeERC20 for IERC20;
@@ -81,23 +79,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     error InvalidLiquidationThreshold();
     error InvalidLiquidationIncentive();
     error InvalidLatePenaltyRate();
-    error WithdrawalWouldBreachLT();
-    error InvalidStateForLiquidation();
-    error NotLiquidatable();
-    error NotSettlementDeadlineExceeded();
-    error ExceedsCloseFactor();
-    error InsufficientCollateral(uint256 seizeAmount, uint256 availableCollateral);
     error InvalidAddress();
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Modifiers
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @dev Validates vault is registered AND is the direct caller.
-    modifier onlyRegisteredVault(address vault) {
-        if (!isRegistered[vault] || vault != msg.sender) revert VaultNotRegistered();
-        _;
-    }
 
     // ──────────────────────────────────────────────────────────────────────
     // Constructor
@@ -213,14 +195,19 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     function repayBadDebt(address vault, uint256 repayAmount) external {
         _checkAccessAllowed("repayBadDebt(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (repayAmount == 0) return;
 
         IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
-        IERC20 supplyAsset = IERC20(address(v.config().supplyAsset));
-        supplyAsset.safeTransferFrom(msg.sender, address(this), repayAmount);
-        supplyAsset.forceApprove(vault, repayAmount);
-        v.repayBadDebt(repayAmount);
-        supplyAsset.forceApprove(vault, 0);
+
+        // TODO: bad-debt transfer flow TBD
+        if (repayAmount > 0) {
+            IERC20 supplyAsset = IERC20(address(v.config().supplyAsset));
+            supplyAsset.safeTransferFrom(msg.sender, address(this), repayAmount);
+            supplyAsset.forceApprove(vault, repayAmount);
+            v.repayBadDebt(repayAmount);
+            supplyAsset.forceApprove(vault, 0);
+        } else {
+            v.repayBadDebt(0);
+        }
     }
 
     /// @notice Approves transfer of the vault's position token.
@@ -330,73 +317,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // External — Vault-Gated (View) — Risk Hooks
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @notice Validates that collateral withdrawal does not breach LT.
-    /// @param vault Vault address (must be msg.sender).
-    /// @param withdrawAmount Amount of collateral tokens to withdraw.
-    /// @custom:error WithdrawalWouldBreachLT if shortfall > 0 after hypothetical withdrawal.
-    function withdrawAllowed(address vault, uint256 withdrawAmount) external view onlyRegisteredVault(vault) {
-        if (IInstitutionalLoanVault(vault).outstandingDebt() == 0) return;
-
-        (, uint256 shortfall) = AccountLiquidityLib.getHypotheticalAccountLiquidity(vault, withdrawAmount);
-        if (shortfall > 0) revert WithdrawalWouldBreachLT();
-    }
-
-    /// @notice Validates HF-based liquidation and returns seize amount.
-    /// @param vault Vault address (must be msg.sender).
-    /// @param repayAmount Amount being repaid.
-    /// @return seizeAmount Collateral to seize.
-    /// @custom:error InvalidStateForLiquidation, NotLiquidatable, ExceedsCloseFactor, InsufficientCollateral.
-    function liquidateAllowed(
-        address vault,
-        uint256 repayAmount
-    ) external view onlyRegisteredVault(vault) returns (uint256 seizeAmount) {
-        IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
-        VaultState s = v.state();
-        if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
-            revert InvalidStateForLiquidation();
-        }
-
-        (, uint256 shortfall) = AccountLiquidityLib.getHypotheticalAccountLiquidity(vault, 0);
-        if (shortfall == 0) revert NotLiquidatable();
-
-        uint256 debt = v.outstandingDebt();
-        uint256 cf = ILiquidationAdapter(liquidationAdapter).closeFactor();
-        uint256 maxRepay = (debt * cf) / MANTISSA;
-        if (repayAmount > maxRepay) revert ExceedsCloseFactor();
-
-        seizeAmount = _calculateSeizeAmountInternal(vault, repayAmount, LiquidationType.HF_BASED);
-        uint256 collateralBalance = IERC20(address(v.config().collateralAsset)).balanceOf(vault);
-        if (seizeAmount > collateralBalance) revert InsufficientCollateral(seizeAmount, collateralBalance);
-    }
-
-    /// @notice Validates deadline-based liquidation and returns seize amount.
-    /// @param vault Vault address (must be msg.sender).
-    /// @param repayAmount Amount being repaid.
-    /// @return seizeAmount Collateral to seize.
-    /// @custom:error NotSettlementDeadlineExceeded, ExceedsCloseFactor, InsufficientCollateral.
-    function liquidateOverdueAllowed(
-        address vault,
-        uint256 repayAmount
-    ) external view onlyRegisteredVault(vault) returns (uint256 seizeAmount) {
-        IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
-        if (v.state() != VaultState.SettlementDeadlineExceeded) {
-            revert NotSettlementDeadlineExceeded();
-        }
-
-        uint256 debt = v.outstandingDebt();
-        uint256 cf = ILiquidationAdapter(liquidationAdapter).closeFactor();
-        uint256 maxRepay = (debt * cf) / MANTISSA;
-        if (repayAmount > maxRepay) revert ExceedsCloseFactor();
-
-        seizeAmount = _calculateSeizeAmountInternal(vault, repayAmount, LiquidationType.DEADLINE);
-        uint256 collateralBalance = IERC20(address(v.config().collateralAsset)).balanceOf(vault);
-        if (seizeAmount > collateralBalance) revert InsufficientCollateral(seizeAmount, collateralBalance);
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
     // External — View
     // ──────────────────────────────────────────────────────────────────────
 
@@ -406,40 +326,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     function predictVaultAddress(address institution) external view returns (address) {
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
         return Clones.predictDeterministicAddress(vaultImplementation, salt);
-    }
-
-    /// @notice Returns current liquidity and shortfall for a vault.
-    /// @param vault Vault address.
-    /// @return liquidity Excess liquidity (0 if shortfall).
-    /// @return shortfall LT shortfall (0 if healthy).
-    function getAccountLiquidity(address vault) external view returns (uint256 liquidity, uint256 shortfall) {
-        return AccountLiquidityLib.getHypotheticalAccountLiquidity(vault, 0);
-    }
-
-    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
-    /// @param vault Vault address.
-    /// @param withdrawAmount Simulated collateral withdrawal amount.
-    /// @return liquidity Excess liquidity (0 if shortfall).
-    /// @return shortfall LT shortfall (0 if healthy).
-    function getHypotheticalAccountLiquidity(
-        address vault,
-        uint256 withdrawAmount
-    ) external view returns (uint256 liquidity, uint256 shortfall) {
-        return AccountLiquidityLib.getHypotheticalAccountLiquidity(vault, withdrawAmount);
-    }
-
-    /// @notice Preview seize amount for a given repay and liquidation type.
-    /// @param vault Vault address.
-    /// @param repayAmount Amount being repaid.
-    /// @param liquidationType HF_BASED or DEADLINE.
-    /// @return Collateral seize amount.
-    function calculateSeizeAmount(
-        address vault,
-        uint256 repayAmount,
-        LiquidationType liquidationType
-    ) external view returns (uint256) {
-        if (!isRegistered[vault]) revert VaultNotRegistered();
-        return _calculateSeizeAmountInternal(vault, repayAmount, liquidationType);
     }
 
     /// @notice Returns state summary for all registered vaults.
@@ -505,20 +391,4 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         if (r.latePenaltyRate <= 1e18) revert InvalidConfig();
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // Internal — View
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @dev Selects incentive by LiquidationType and delegates to library. Caches riskConfig.
-    function _calculateSeizeAmountInternal(
-        address vault,
-        uint256 repayAmount,
-        LiquidationType liqType
-    ) internal view returns (uint256) {
-        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
-        uint256 incentive = liqType == LiquidationType.HF_BASED
-            ? rc.liquidationIncentive
-            : rc.latePenaltyRate;
-        return AccountLiquidityLib.calculateSeizeAmount(vault, repayAmount, incentive);
-    }
 }

@@ -7,9 +7,10 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { BaseVault } from "../BaseVault.sol";
-import { VaultConfig, RiskConfig, VaultState } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig, RiskConfig, VaultState, LiquidationType } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
+import { ILiquidationAdapter } from "../interfaces/ILiquidationAdapter.sol";
 import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
 /// @title InstitutionalLoanVault
@@ -60,6 +61,10 @@ contract InstitutionalLoanVault is BaseVault {
     error NotBadDebt();
     error InsufficientRepayment();
     error NoOutstandingDebt();
+    error NotLiquidatable();
+    error ExceedsCloseFactor();
+    error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
+    error WithdrawalWouldBreachLT();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -184,33 +189,44 @@ contract InstitutionalLoanVault is BaseVault {
     // External — Adapter-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice HF-based liquidation. LiquidationAdapter only.
-    /// @param repayAmount Amount of supply asset to repay.
-    /// @return actualRepay Actual amount repaid after clamping to outstanding debt.
-    /// @custom:error NoOutstandingDebt if there is no debt to repay.
-    /// @custom:event LiquidationExecuted
+    /**
+     * @notice HF-based liquidation. LiquidationAdapter only.
+     * @param repayAmount Amount of supply asset to repay.
+     * @return actualRepay Actual amount repaid after clamping to outstanding debt.
+     * @custom:error NoOutstandingDebt if there is no debt to repay.
+     * @custom:error NotLiquidatable if vault has no LT shortfall.
+     * @custom:error ExceedsCloseFactor if repay exceeds close factor limit.
+     * @custom:error InsufficientCollateralForSeize if seize amount exceeds collateral balance.
+     * @custom:event LiquidationExecuted
+     */
     function liquidate(uint256 repayAmount) external onlyLiquidationAdapter nonReentrant returns (uint256 actualRepay) {
+        _checkAndAdvanceState();
+        VaultState s = _runtime.state;
+        if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
+            revert InvalidState();
+        }
+
         uint256 debt = _outstandingDebt();
         if (debt == 0) revert NoOutstandingDebt();
         actualRepay = repayAmount > debt ? debt : repayAmount;
 
-        address controller = vaultController;
-        uint256 seizeAmount = IInstitutionalVaultController(controller).liquidateAllowed(
-            address(this), actualRepay
-        );
+        (, uint256 shortfall) = _getHypotheticalVaultLiquidity(0);
+        if (shortfall == 0) revert NotLiquidatable();
 
-        IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), actualRepay);
-        IERC20(address(_config.collateralAsset)).safeTransfer(msg.sender, seizeAmount);
-
+        uint256 seizeAmount = _executeLiquidation(debt, actualRepay, LiquidationType.HF_BASED);
         emit LiquidationExecuted(msg.sender, actualRepay, seizeAmount);
     }
 
-    /// @notice Deadline-based liquidation. LiquidationAdapter only.
-    /// @param repayAmount Amount of supply asset to repay.
-    /// @return actualRepay Actual amount repaid after clamping to outstanding debt.
-    /// @custom:error NoOutstandingDebt if there is no debt to repay.
-    /// @custom:error InvalidStateForOverdueLiquidation if not in SettlementDeadlineExceeded.
-    /// @custom:event OverdueLiquidationExecuted
+    /**
+     * @notice Deadline-based liquidation. LiquidationAdapter only.
+     * @param repayAmount Amount of supply asset to repay.
+     * @return actualRepay Actual amount repaid after clamping to outstanding debt.
+     * @custom:error NoOutstandingDebt if there is no debt to repay.
+     * @custom:error InvalidStateForOverdueLiquidation if not in SettlementDeadlineExceeded.
+     * @custom:error ExceedsCloseFactor if repay exceeds close factor limit.
+     * @custom:error InsufficientCollateralForSeize if seize amount exceeds collateral balance.
+     * @custom:event OverdueLiquidationExecuted
+     */
     function liquidateOverdueVault(
         uint256 repayAmount
     ) external onlyLiquidationAdapter nonReentrant returns (uint256 actualRepay) {
@@ -221,14 +237,7 @@ contract InstitutionalLoanVault is BaseVault {
         if (debt == 0) revert NoOutstandingDebt();
         actualRepay = repayAmount > debt ? debt : repayAmount;
 
-        address controller = vaultController;
-        uint256 seizeAmount = IInstitutionalVaultController(controller).liquidateOverdueAllowed(
-            address(this), actualRepay
-        );
-
-        IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), actualRepay);
-        IERC20(address(_config.collateralAsset)).safeTransfer(msg.sender, seizeAmount);
-
+        uint256 seizeAmount = _executeLiquidation(debt, actualRepay, LiquidationType.DEADLINE);
         emit OverdueLiquidationExecuted(msg.sender, actualRepay, seizeAmount);
     }
 
@@ -279,7 +288,12 @@ contract InstitutionalLoanVault is BaseVault {
         if (s == VaultState.Lock) {
             uint256 collateralBalance = collateralToken.balanceOf(address(this));
             if (amount > collateralBalance - _runtime.minimumCollateralRequired) revert InsufficientCollateral();
-            IInstitutionalVaultController(vaultController).withdrawAllowed(address(this), amount);
+
+            // LT check — skip if no debt outstanding
+            if (_outstandingDebt() > 0) {
+                (, uint256 shortfall) = _getHypotheticalVaultLiquidity(amount);
+                if (shortfall > 0) revert WithdrawalWouldBreachLT();
+            }
         }
 
         if (amount > _runtime.totalCollateralDeposited) revert InsufficientCollateral();
@@ -351,6 +365,65 @@ contract InstitutionalLoanVault is BaseVault {
         return _riskConfig;
     }
 
+    /// @notice Returns current liquidity and shortfall for the vault.
+    /// @return liquidity Excess liquidity (0 if shortfall).
+    /// @return shortfall LT shortfall (0 if healthy).
+    function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall) {
+        return _getHypotheticalVaultLiquidity(0);
+    }
+
+    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+    /// @param withdrawAmount Simulated collateral withdrawal amount.
+    /// @return liquidity Excess liquidity (0 if shortfall).
+    /// @return shortfall LT shortfall (0 if healthy).
+    function getHypotheticalVaultLiquidity(
+        uint256 withdrawAmount
+    ) external view returns (uint256 liquidity, uint256 shortfall) {
+        return _getHypotheticalVaultLiquidity(withdrawAmount);
+    }
+
+    /// @notice Preview seize amount for a given repay and liquidation type.
+    /// @param repayAmount Amount being repaid.
+    /// @param liquidationType HF_BASED or DEADLINE.
+    /// @return Collateral seize amount.
+    function calculateSeizeAmount(
+        uint256 repayAmount,
+        LiquidationType liquidationType
+    ) external view returns (uint256) {
+        return _calculateSeizeAmount(repayAmount, liquidationType);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — State-Changing
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Shared liquidation execution: close factor check, seize calculation, token transfers.
+     * @param debt Current outstanding debt.
+     * @param actualRepay Clamped repay amount.
+     * @param liqType HF_BASED or DEADLINE — determines incentive multiplier.
+     * @return seizeAmount Collateral seized.
+     * @custom:error ExceedsCloseFactor if actualRepay exceeds close factor limit.
+     * @custom:error InsufficientCollateralForSeize if seize amount exceeds collateral balance.
+     */
+    function _executeLiquidation(
+        uint256 debt,
+        uint256 actualRepay,
+        LiquidationType liqType
+    ) internal returns (uint256 seizeAmount) {
+        uint256 cf = ILiquidationAdapter(liquidationAdapter).closeFactor();
+        uint256 maxRepay = (debt * cf) / MANTISSA;
+        if (actualRepay > maxRepay) revert ExceedsCloseFactor();
+
+        seizeAmount = _calculateSeizeAmount(actualRepay, liqType);
+        IERC20 collateralToken = IERC20(address(_config.collateralAsset));
+        uint256 collateralBalance = collateralToken.balanceOf(address(this));
+        if (seizeAmount > collateralBalance) revert InsufficientCollateralForSeize(seizeAmount, collateralBalance);
+
+        IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), actualRepay);
+        collateralToken.safeTransfer(msg.sender, seizeAmount);
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
@@ -373,5 +446,69 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 price = oracleRef.getPrice(supply);
         uint8 decimals = IERC20Metadata(supply).decimals();
         return (debt * price) / (10 ** decimals);
+    }
+
+    /**
+     * @dev Computes liquidity (excess buffer) and shortfall (deficit) for the vault,
+     *      optionally simulating a collateral withdrawal.
+     * @param withdrawAmount Collateral token amount to simulate withdrawing (0 for current state).
+     * @return liquidity Excess buffer when safe; 0 when shortfall > 0.
+     * @return shortfall Deficit when liquidatable; 0 when liquidity > 0.
+     */
+    function _getHypotheticalVaultLiquidity(
+        uint256 withdrawAmount
+    ) internal view returns (uint256 liquidity, uint256 shortfall) {
+        uint256 collateralUSD = _getCollateralValueUSD();
+        uint256 debtUSD = _getDebtValueUSD();
+        uint256 lt = _riskConfig.liquidationThreshold;
+
+        uint256 withdrawValueUSD;
+        if (withdrawAmount > 0) {
+            uint256 collateralBalance = IERC20(address(_config.collateralAsset)).balanceOf(address(this));
+            if (collateralBalance > 0) {
+                withdrawValueUSD = (withdrawAmount * collateralUSD) / collateralBalance;
+            }
+        }
+
+        uint256 collateralAfterWithdraw = collateralUSD > withdrawValueUSD ? collateralUSD - withdrawValueUSD : 0;
+        uint256 ltCap = (collateralAfterWithdraw * lt) / MANTISSA;
+
+        if (debtUSD <= ltCap) {
+            return (ltCap - debtUSD, 0);
+        } else {
+            return (0, debtUSD - ltCap);
+        }
+    }
+
+    /**
+     * @dev Computes the collateral amount to seize for a given repay amount.
+     * @param repayAmount Amount of supply asset being repaid.
+     * @param liqType HF_BASED uses liquidationIncentive, DEADLINE uses latePenaltyRate.
+     * @return seizeAmount Collateral amount to transfer to liquidator/settler.
+     */
+    function _calculateSeizeAmount(
+        uint256 repayAmount,
+        LiquidationType liqType
+    ) internal view returns (uint256 seizeAmount) {
+        RiskConfig memory rc = _riskConfig;
+        uint256 incentive = liqType == LiquidationType.HF_BASED
+            ? rc.liquidationIncentive
+            : rc.latePenaltyRate;
+
+        address supplyAsset = address(_config.supplyAsset);
+        address collateralAsset = address(_config.collateralAsset);
+        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
+
+        uint256 supplyPrice = oracleRef.getPrice(supplyAsset);
+        uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
+
+        if (collateralPrice == 0) return 0;
+
+        uint8 supplyDecimals = IERC20Metadata(supplyAsset).decimals();
+        uint8 collateralDecimals = IERC20Metadata(collateralAsset).decimals();
+
+        uint256 repayValueUSD = (repayAmount * supplyPrice) / (10 ** supplyDecimals);
+        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA;
+        seizeAmount = (seizeValueUSD * (10 ** collateralDecimals)) / collateralPrice;
     }
 }

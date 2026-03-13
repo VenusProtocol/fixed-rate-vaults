@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity 0.8.25;
 
-import { VaultConfig, RiskConfig, VaultStateInfo, LiquidationType } from "./IInstitutionalVaultTypes.sol";
+import { VaultConfig, RiskConfig, VaultStateInfo } from "./IInstitutionalVaultTypes.sol";
 import { IVaultController } from "./IVaultController.sol";
 
 /// @title IInstitutionalVaultController
-/// @notice Interface for the Institutional Vault controller: clone deployer, registry, risk hooks, ACM gateway.
+/// @notice Interface for the Institutional Vault controller: clone deployer, registry, ACM gateway.
 interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
     // Vault Deployment
@@ -65,39 +65,6 @@ interface IInstitutionalVaultController is IVaultController {
 
     /// @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
     function repayBadDebt(address vault, uint256 repayAmount) external;
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Risk Hooks (called by vault — vault is msg.sender)
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @notice Validates that collateral withdrawal does not breach LT.
-    function withdrawAllowed(address vault, uint256 withdrawAmount) external view;
-
-    /// @notice Validates HF-based liquidation and returns seize amount.
-    function liquidateAllowed(address vault, uint256 repayAmount) external view returns (uint256 seizeAmount);
-
-    /// @notice Validates deadline-based liquidation and returns seize amount.
-    function liquidateOverdueAllowed(address vault, uint256 repayAmount) external view returns (uint256 seizeAmount);
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Account Liquidity
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @notice Returns current liquidity and shortfall for a vault.
-    function getAccountLiquidity(address vault) external view returns (uint256 liquidity, uint256 shortfall);
-
-    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
-    function getHypotheticalAccountLiquidity(
-        address vault,
-        uint256 withdrawAmount
-    ) external view returns (uint256 liquidity, uint256 shortfall);
-
-    /// @notice Preview seize amount for a given repay and liquidation type.
-    function calculateSeizeAmount(
-        address vault,
-        uint256 repayAmount,
-        LiquidationType liquidationType
-    ) external view returns (uint256);
 
     // ──────────────────────────────────────────────────────────────────────
     // Registry & Views
