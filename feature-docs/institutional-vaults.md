@@ -59,8 +59,13 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 **Decision:** `collateralFactor` is used exclusively for sizing `initialCollateral` (at deployment) and `minimumCollateralRequired` (at Lock). It is NOT used in runtime HF checks. `liquidationThreshold` is the sole parameter for liquidation eligibility and withdrawal health checks. `setLiquidationThreshold` no longer validates `LT > CF`.
 **Why:** With `minimumCollateralRequired` properly encoding the CF-based floor, a separate CF-gated HF check is redundant. LT handles the "is this vault safe to withdraw from / eligible for liquidation" question independently.
 
+### 12. Vault Ownership is Transferable via PositionToken (Not Tied to Institution Address)
+**Decision:** Position-holder gated functions (`depositCollateral`, `withdrawCollateral`, `claimRaisedFunds`) check `positionToken.ownerOf(positionTokenId)` — the current NFT owner — not the institution address stored at deployment. The modifier is named `onlyPositionHolder` to reflect this.
+**Why:** The institution address is used for deployment and vault association, but the PositionToken is the actual ownership credential. If the institution transfers the token, the new holder gains full control of position-gated operations. This enables institutional vault ownership to be delegated or transferred without redeployment.
+
 ## Gotchas
 - **OZ v4.9 ERC4626Upgradeable uses IERC20Upgradeable** — not IERC20. The vault wraps IERC20 from OZ non-upgradeable for SafeERC20 operations on config assets.
 - **Collateral floor recalculated at Lock**: `minimumCollateralRequired` may differ from the initially deposited amount if `totalRaised < maxBorrowCap`. Institution can withdraw the freed excess (subject to LT check).
 - **Outstanding debt uses balance-based derivation**: `totalOwed - balanceOf(supplyAsset)`. No cumulative borrow/repay tracking.
 - **Shares are freely transferable** during Lock — no transfer restriction.
+- **PositionToken transfer changes vault control**: `onlyPositionHolder` follows token ownership, not the stored institution address. If the token is transferred, the original institution loses access to collateral ops and fund claims.

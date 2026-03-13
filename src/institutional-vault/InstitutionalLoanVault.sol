@@ -420,6 +420,7 @@ contract InstitutionalLoanVault is BaseVault {
         if (seizeAmount > collateralBalance) revert InsufficientCollateralForSeize(seizeAmount, collateralBalance);
 
         IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), actualRepay);
+        _runtime.totalCollateralDeposited -= seizeAmount;
         collateralToken.safeTransfer(msg.sender, seizeAmount);
     }
 

@@ -492,7 +492,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         if (_runtime.fundsWithdrawn) revert AlreadyWithdrawn();
 
         IERC20 supplyToken = IERC20(asset());
-        uint256 amount = supplyToken.balanceOf(address(this));
+        uint256 amount = _runtime.totalRaised;
         _runtime.fundsWithdrawn = true;
         supplyToken.safeTransfer(recipient, amount);
 
