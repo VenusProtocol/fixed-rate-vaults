@@ -35,7 +35,7 @@ src/
 test/                          # Forge test files
 script/                        # Deployment scripts
 lib/                           # Dependencies (submodules)
-design/                          # Feature decision logs (git-tracked)
+feature-docs/                          # Feature decision logs (git-tracked)
 research/                      # Research & design docs (NOT git-tracked)
 .task_plan.md                  # Claude's temp execution plan (NOT git-tracked)
 ```
@@ -128,10 +128,10 @@ Required on all `external` and `public` functions **and** their interface declar
 
 ### Execution Order
 
-1. **Restore context** — Read existing `design/<feature-name>.md` and `research/<feature-name>/` if they exist
+1. **Restore context** — Read existing `feature-docs/<feature-name>.md` and `research/<feature-name>/` if they exist
 2. **Create plan** — Write `.task_plan.md` with phases, checklist, and goals
 3. **Implement** — Write contracts and interfaces following Code Design above
-4. **Update notes** — Log decisions and progress at milestones to `design/<feature-name>.md`
+4. **Update notes** — Log decisions and progress at milestones to `feature-docs/<feature-name>.md`
 5. **Tests** — Only when explicitly asked (see below)
 
 ### Testing
@@ -153,9 +153,9 @@ Always create `.task_plan.md` at the project root before starting feature work. 
 ### Subagent Strategy
 - Use subagents for side-effect-free tasks that don't need to persist in the main context window — e.g., when the user asks to explain a piece of code, asks "where is X used?", or wants to compare approaches ("would it be better to do A or B?"). Delegate the research/exploration to a subagent and return the answer.
 
-### Design (`design/`)
+### Feature Docs (`feature-docs/`)
 
-At key milestones during feature development, update `design/<feature-name>.md` capturing:
+At key milestones during feature development, update `feature-docs/<feature-name>.md` capturing:
 - Feature name and one-line summary
 - Key design decisions and **why** they were made
 - Trade-offs considered
