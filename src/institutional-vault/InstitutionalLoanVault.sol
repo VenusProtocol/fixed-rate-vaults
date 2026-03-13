@@ -20,6 +20,9 @@ import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 ///      and core state machine. Adds: collateral deposit/withdraw, borrowing, risk checks,
 ///      liquidation entry points, and pre-fundraising states (WaitingForCollateral, CollateralDeposited).
 ///      No ACM — all governance calls are proxied through VaultController.
+///      Position-holder gated functions (collateral ops, claimRaisedFunds) are restricted to the
+///      current owner of the vault's PositionToken — not the original institution address. The
+///      institution can transfer vault ownership by transferring the token to another address.
 contract InstitutionalLoanVault is BaseVault {
     using SafeERC20 for IERC20;
 
@@ -66,12 +69,15 @@ contract InstitutionalLoanVault is BaseVault {
     // Modifiers
     // ──────────────────────────────────────────────────────────────────────
 
-    modifier onlyInstitution() {
+    /// @dev Restricts to the current owner of the vault's PositionToken. Ownership is transferable —
+    ///      if the institution transfers the token, the new holder gains access to position-holder gated functions.
+    modifier onlyPositionHolder() {
         if (_config.positionTokenId == 0) revert PositionTokenIdNotSet();
         if (positionToken.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
         _;
     }
 
+    /// @dev Restricts to the LiquidationAdapter contract set during initialization.
     modifier onlyLiquidationAdapter() {
         if (msg.sender != liquidationAdapter) revert Unauthorized();
         _;
@@ -238,14 +244,14 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // External — Institution-Gated (State-Changing)
+    // External — PositionHolder-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Deposits collateral. WaitingForCollateral: must meet initialCollateralRequired. Lock: top-up.
     /// @param amount Amount of collateral tokens to deposit.
     /// @custom:error InsufficientCollateral if total collateral < initialCollateralRequired in WaitingForCollateral.
     /// @custom:event CollateralDeposited, StateTransition (if WaitingForCollateral -> CollateralDeposited)
-    function depositCollateral(uint256 amount) external onlyInstitution nonReentrant whenNotPaused {
+    function depositCollateral(uint256 amount) external onlyPositionHolder nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.WaitingForCollateral && s != VaultState.Lock) revert InvalidState();
@@ -274,7 +280,7 @@ contract InstitutionalLoanVault is BaseVault {
     /// @param amount Amount of collateral tokens to withdraw.
     /// @custom:error InsufficientCollateral if withdrawal would breach minimumCollateralRequired floor or exceed deposited amount.
     /// @custom:event CollateralWithdrawn
-    function withdrawCollateral(uint256 amount) external onlyInstitution nonReentrant whenNotPaused {
+    function withdrawCollateral(uint256 amount) external onlyPositionHolder nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.Lock && s != VaultState.Matured) revert InvalidState();
@@ -302,7 +308,7 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice One-time fund withdrawal. Transfers all raised supply assets to institution.
     /// @custom:error AlreadyWithdrawn if funds already claimed.
     /// @custom:event RaisedFundsClaimed
-    function claimRaisedFunds() external onlyInstitution nonReentrant whenNotPaused {
+    function claimRaisedFunds() external onlyPositionHolder nonReentrant whenNotPaused {
         _claimRaisedFunds(msg.sender);
     }
 
