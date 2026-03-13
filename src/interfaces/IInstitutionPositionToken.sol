@@ -3,16 +3,16 @@ pragma solidity 0.8.25;
 
 import { IERC721 } from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-/// @title IInstitutionPositionNFT
-/// @notice Interface for the singleton ERC-721 that represents institution positions in FRIV vaults.
-interface IInstitutionPositionNFT is IERC721 {
+/// @title IInstitutionPositionToken
+/// @notice Interface for the singleton ERC-721 that represents institution positions in Institutional Vaults.
+interface IInstitutionPositionToken is IERC721 {
     // ──────────────────────────────────────────────────────────────────────
     // Minting (VaultController only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Mints a new NFT to `to` for the given vault. Called during createVault().
+    /// @notice Mints a new token to `to` for the given vault. Called during createVault().
     /// @param to The initial institution operator address.
-    /// @param vault The vault address this NFT represents.
+    /// @param vault The vault address this token represents.
     /// @return tokenId The minted token ID.
     function mint(address to, address vault) external returns (uint256 tokenId);
 

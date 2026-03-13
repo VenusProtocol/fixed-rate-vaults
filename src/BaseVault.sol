@@ -179,7 +179,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     /// @param  /*receiver*/ Unused (no per-user limits).
     /// @return Maximum depositable amount.
     function maxDeposit(address) public view override returns (uint256) {
-        if (_runtime.state != VaultState.Open) return 0;
+        if (_runtime.state != VaultState.Fundraising) return 0;
         return _config.maxBorrowCap - _runtime.totalRaised;
     }
 
@@ -245,7 +245,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         VaultState s = _runtime.state;
 
         // Open -> Lock or Failed
-        if (s == VaultState.Open) {
+        if (s == VaultState.Fundraising) {
             _advanceFromOpen();
             return;
         }
@@ -304,7 +304,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
 
         if (timeReached && !minMet) {
             _runtime.state = VaultState.Failed;
-            emit StateTransition(VaultState.Open, VaultState.Failed, block.timestamp);
+            emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
             emit VaultFailed(_runtime.totalRaised, _config.minBorrowCap);
             return;
         }
@@ -313,7 +313,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
             _runtime.lockEndTime = uint40(block.timestamp) + _config.lockDuration;
             _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
             _runtime.state = VaultState.Lock;
-            emit StateTransition(VaultState.Open, VaultState.Lock, block.timestamp);
+            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
             emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
         }
     }
@@ -368,7 +368,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         uint256 shares
     ) internal override nonReentrant whenNotPaused {
         _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Open) revert InvalidState();
+        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
         if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDeposit();
 
         super._deposit(caller, receiver, assets, shares);

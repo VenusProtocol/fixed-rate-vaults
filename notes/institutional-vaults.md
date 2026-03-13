@@ -7,17 +7,17 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 
 ### 1. BaseVault Extracted — InstitutionalLoanVault Inherits BaseVault
 **Decision:** `BaseVault` (`src/BaseVault.sol`) is an abstract contract providing shared ERC-4626 mechanics, fundraising, interest, settlement (protocol fee waterfall), and core state machine. `InstitutionalLoanVault` inherits it and adds collateral, borrowing, risk checks, and liquidation.
-**Why:** Per the Unified Vault Architecture, the fundraising process is identical across vault types. Extracting BaseVault now enables the future CeffuVault to reuse the same base without duplication. `IVaultController` provides the minimal shared interface (PSR, comptroller) that BaseVault needs; `IInstitutionalVaultController` extends it with FRIV-specific methods.
+**Why:** Per the Unified Vault Architecture, the fundraising process is identical across vault types. Extracting BaseVault now enables the future CeffuVault to reuse the same base without duplication. `IVaultController` provides the minimal shared interface (PSR, comptroller) that BaseVault needs; `IInstitutionalVaultController` extends it with Institutional Vault-specific methods.
 **What lives where:**
 - BaseVault: `_checkAndAdvanceState()` (Open→Lock/Failed, Lock→PendingSettlement, PendingSettlement→Matured/SDE, SDE→Matured, Lock→Matured), `_settleProtocolShare()`, `_computeTotalInterest()`, `totalAssets()`, deposit/mint clamping, `_withdraw()`, `maxDeposit`/`maxMint`/`maxWithdraw`/`maxRedeem`, `closeVault()`, `pause()`/`unpause()`, `updateVaultState()`, `config()`/`runtime()`/`state()` views. Storage: `_config`, `_runtime`, `vaultController`.
-- InstitutionalLoanVault: `_outstandingDebt()` override (balance-based), `depositCollateral()`/`withdrawCollateral()`, `claimRaisedFunds()`, `repay()`, `repayBadDebt()`, `liquidate()`/`liquidateOverdueVault()`, `openVault()`, risk setters, oracle helpers. Storage: `_riskConfig`, `positionNFT`, `liquidationAdapter`.
+- InstitutionalLoanVault: `_outstandingDebt()` override (balance-based), `depositCollateral()`/`withdrawCollateral()`, `claimRaisedFunds()`, `repay()`, `repayBadDebt()`, `liquidate()`/`liquidateOverdueVault()`, `openVault()`, risk setters, oracle helpers. Storage: `_riskConfig`, `positionToken`, `liquidationAdapter`.
 - `_outstandingDebt()` is `internal view virtual` in BaseVault — each vault type defines its own debt derivation.
 
 ### 2. OZ v4.9 (Not v5)
 **Decision:** Using OpenZeppelin v4.9 contracts (ERC4626Upgradeable, ERC721, Ownable2Step, ReentrancyGuardUpgradeable, PausableUpgradeable).
 **Why:** The submodules in lib/ are v4.9. ERC721 uses `_beforeTokenTransfer` (not `_update`), Ownable has no constructor args.
 
-### 3. InstitutionPositionNFT is Non-Upgradeable
+### 3. InstitutionPositionToken is Non-Upgradeable
 **Decision:** Plain ERC721 + Ownable2Step, deployed once. Ownership transferred to VaultController after deployment.
 **Why:** Logic is minimal (mint, transfer control). No upgrade path needed. Reduces attack surface.
 

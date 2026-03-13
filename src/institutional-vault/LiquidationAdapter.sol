@@ -13,7 +13,7 @@ import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVault
 import { IProtocolShareReserve } from "../interfaces/IProtocolShareReserve.sol";
 
 /// @title LiquidationAdapter
-/// @notice Manages whitelisted liquidators/settlers, routes liquidation calls to FRIV vaults,
+/// @notice Manages whitelisted liquidators/settlers, routes liquidation calls to Institutional Vault vaults,
 ///         receives seized collateral, and splits incentive between protocol and caller.
 /// @dev Deployed as a transparent proxy (upgradeable). Holds ACM for whitelist and config management.
 contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuardUpgradeable {

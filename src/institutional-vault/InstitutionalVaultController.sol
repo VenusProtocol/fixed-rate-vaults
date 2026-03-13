@@ -9,12 +9,12 @@ import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contract
 
 import { VaultConfig, RiskConfig, VaultState, VaultStateInfo, LiquidationType } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
-import { IInstitutionPositionNFT } from "../interfaces/IInstitutionPositionNFT.sol";
+import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { ILiquidationAdapter } from "../interfaces/ILiquidationAdapter.sol";
 import { AccountLiquidityLib } from "../lib/AccountLiquidityLib.sol";
 
 /// @title InstitutionalVaultController
-/// @notice Central orchestrator for the FRIV system. Deploys vault clones, maintains the registry,
+/// @notice Central orchestrator for the Institutional Vault system. Deploys vault clones, maintains the registry,
 ///         holds the Venus ACM reference, and contains all risk validation logic.
 /// @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
 contract InstitutionalVaultController is Initializable, AccessControlledV8 {
@@ -45,8 +45,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @notice Comptroller address for PSR integration.
     address public comptroller;
 
-    /// @notice InstitutionPositionNFT contract address.
-    IInstitutionPositionNFT public positionNFT;
+    /// @notice InstitutionPositionToken contract address.
+    IInstitutionPositionToken public positionToken;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage — Registry
@@ -118,7 +118,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param oracle_ Venus ResilientOracle address.
     /// @param protocolShareReserve_ PSR address.
     /// @param comptroller_ Comptroller address for PSR.
-    /// @param positionNFT_ InstitutionPositionNFT address.
+    /// @param positionToken_ InstitutionPositionToken address.
     /// @param acm_ Venus AccessControlManager address.
     function initialize(
         address vaultImplementation_,
@@ -126,7 +126,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         address oracle_,
         address protocolShareReserve_,
         address comptroller_,
-        address positionNFT_,
+        address positionToken_,
         address acm_
     ) external initializer {
         __AccessControlled_init(acm_);
@@ -136,7 +136,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         oracle = oracle_;
         protocolShareReserve = protocolShareReserve_;
         comptroller = comptroller_;
-        positionNFT = IInstitutionPositionNFT(positionNFT_);
+        positionToken = IInstitutionPositionToken(positionToken_);
     }
 
     /// @notice Deploys a new vault clone via deterministic CREATE2.
@@ -154,9 +154,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         address institution = _config.institutionOperator;
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
 
-        // Mint NFT first (predict address for vault mapping)
+        // Mint position token first (predict address for vault mapping)
         vault = Clones.predictDeterministicAddress(vaultImplementation, salt);
-        uint256 tokenId = positionNFT.mint(institution, vault);
+        uint256 tokenId = positionToken.mint(institution, vault);
 
         // Deploy clone
         vault = Clones.cloneDeterministic(vaultImplementation, salt);
@@ -164,7 +164,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         // Assemble config with tokenId and initialize
         VaultConfig memory assembledConfig = _assembleVaultConfig(_config, tokenId);
         IInstitutionalLoanVault(vault).initialize(
-            assembledConfig, _riskConfig, positionNFT, liquidationAdapter
+            assembledConfig, _riskConfig, positionToken, liquidationAdapter
         );
 
         // Register
@@ -223,13 +223,13 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         supplyAsset.forceApprove(vault, 0);
     }
 
-    /// @notice Approves transfer of the vault's position NFT.
+    /// @notice Approves transfer of the vault's position token.
     /// @param vault Vault address.
     function approvePositionTransfer(address vault) external {
         _checkAccessAllowed("approvePositionTransfer(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        uint256 tokenId = positionNFT.vaultToTokenId(vault);
-        positionNFT.approveTransfer(tokenId);
+        uint256 tokenId = positionToken.vaultToTokenId(vault);
+        positionToken.approveTransfer(tokenId);
     }
 
     /// @notice Revokes a previously granted approval.
@@ -237,8 +237,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     function revokePositionTransfer(address vault) external {
         _checkAccessAllowed("revokePositionTransfer(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        uint256 tokenId = positionNFT.vaultToTokenId(vault);
-        positionNFT.revokeTransferApproval(tokenId);
+        uint256 tokenId = positionToken.vaultToTokenId(vault);
+        positionToken.revokeTransferApproval(tokenId);
     }
 
     /// @notice Updates liquidation threshold on a vault.

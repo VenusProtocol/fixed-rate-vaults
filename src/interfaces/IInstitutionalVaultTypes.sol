@@ -3,17 +3,20 @@ pragma solidity 0.8.25;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @notice Vault lifecycle states for the Institutional Fixed-Rate Vault system.
+/// @notice Shared vault lifecycle states — single enum for all vault types (Institutional Vault, Ceffu).
+///         Each vault type uses a subset; unused states are simply skipped in transitions.
 enum VaultState {
-    WaitingForCollateral, // 0 — deployed, awaiting institution collateral
-    CollateralDeposited, // 1 — collateral received, awaiting open trigger
-    Open, // 2 — fundraising: suppliers deposit supply asset
-    Lock, // 3 — borrowing active, interest accruing
-    PendingSettlement, // 4 — maturity reached, awaiting repayment within settlement window
-    SettlementDeadlineExceeded, // 5 — settlement deadline passed with outstanding debt
-    Matured, // 6 — debt repaid + lock period passed; suppliers and institution can withdraw
-    Failed, // 7 — fundraising failed (below min cap); suppliers can refund
-    Liquidated // 8 — bad-debt rescue; suppliers can redeem; institution cannot withdraw collateral
+    WaitingForCollateral, // 0 — Institutional Vault: awaiting institution collateral; Ceffu: skipped
+    CollateralDeposited, // 1 — Institutional Vault: collateral in, awaiting open; Ceffu: skipped
+    Fundraising, // 2 — suppliers deposit supply asset (both)
+    InstitutionConfirmation, // 3 — post-fundraising, pre-lock; Ceffu: PendingFill; Institutional Vault: skipped
+    Lock, // 4 — funds committed, interest accruing (both)
+    PendingSettlement, // 5 — maturity reached, awaiting repayment (both)
+    SettlementDeadlineExceeded, // 6 — settlement deadline passed with outstanding debt (both)
+    Matured, // 7 — settlement complete, shares redeemable (both)
+    Failed, // 8 — fundraising below min cap (both; Ceffu: Cancelled)
+    Liquidated, // 9 — Institutional Vault: bad-debt rescue; Ceffu: N/A
+    Closed // 10 — governance delisted; Ceffu uses this; Institutional Vault uses isActive flag
 }
 
 /// @notice Liquidation type selector — HF-based uses liquidationIncentive, deadline-based uses latePenaltyRate.
@@ -34,8 +37,8 @@ struct VaultConfig {
     uint40 lockDuration;
     uint40 settlementWindow;
     uint256 reserveFactor; // mantissa (0.1e18 = 10%)
-    address institutionOperator; // initial NFT recipient
-    uint256 positionTokenId; // NFT representing institution position
+    address institutionOperator; // initial position token recipient
+    uint256 positionTokenId; // token representing institution position
     uint256 minSupplierDeposit; // minimum deposit in supply asset units; 0 = disable
 }
 

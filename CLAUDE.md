@@ -46,10 +46,12 @@ research/                      # Research & design docs (NOT git-tracked)
 
 ## Code Design
 
+Must follow these Solidity rules:
+
 - **Custom errors only** — No `require` with strings.
 - **NatSpec** on all external/public functions + their interface declarations. Include `@notice`, `@param`, `@return`, `@custom:error`, `@custom:event`.
 - **Contract layout:** Constants → Immutables → State vars → Events → Errors → Modifiers → Constructor → receive/fallback
-- **Function order:** `external` → `public` → `internal` → `private` (ACM-gated first within each, then state-changing → view → pure)
+- **Function order:** `external` → `public` → `internal` → `private`. Within each visibility: ACM/access-gated first, then permissionless. Within each access level: state-changing → view → pure.
 - **No `public` functions** — Use `internal` + `external` wrapper instead. Exception: inherited/overridden functions (e.g. OZ). State variables **should** be `public` (auto-getter); define the corresponding getter in the interface.
 - **Cache everything** — Never SLOAD or external-call the same thing twice. Cache in locals.
 

@@ -9,7 +9,7 @@ import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVault
 import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
 /// @title AccountLiquidityLib
-/// @notice Stateless library for FRIV risk math — liquidity/shortfall and seize calculations.
+/// @notice Stateless library for Institutional Vault risk math — liquidity/shortfall and seize calculations.
 /// @dev Used by InstitutionalVaultController. No storage, no state — pure computation.
 ///      Fetches all data directly from the vault.
 library AccountLiquidityLib {

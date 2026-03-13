@@ -5,7 +5,7 @@ import { VaultConfig, RiskConfig, VaultStateInfo, LiquidationType } from "./IIns
 import { IVaultController } from "./IVaultController.sol";
 
 /// @title IInstitutionalVaultController
-/// @notice Interface for the FRIV controller: clone deployer, registry, risk hooks, ACM gateway.
+/// @notice Interface for the Institutional Vault controller: clone deployer, registry, risk hooks, ACM gateway.
 interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
     // Vault Deployment
@@ -37,10 +37,10 @@ interface IInstitutionalVaultController is IVaultController {
     function unpauseVault(address vault) external;
 
     // ──────────────────────────────────────────────────────────────────────
-    // Institution Position NFT Governance
+    // Institution Position Token Governance
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Approves transfer of the vault's position NFT.
+    /// @notice Approves transfer of the vault's position token.
     function approvePositionTransfer(address vault) external;
 
     /// @notice Revokes a previously granted approval.

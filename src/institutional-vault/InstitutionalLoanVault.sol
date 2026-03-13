@@ -8,7 +8,7 @@ import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/I
 
 import { BaseVault } from "../BaseVault.sol";
 import { VaultConfig, RiskConfig, VaultState } from "../interfaces/IInstitutionalVaultTypes.sol";
-import { IInstitutionPositionNFT } from "../interfaces/IInstitutionPositionNFT.sol";
+import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
@@ -29,8 +29,8 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice Risk parameters — CF immutable, LT/LI/latePenaltyRate mutable via controller.
     RiskConfig internal _riskConfig;
 
-    /// @notice InstitutionPositionNFT contract — from controller storage.
-    IInstitutionPositionNFT public positionNFT;
+    /// @notice InstitutionPositionToken contract — from controller storage.
+    IInstitutionPositionToken public positionToken;
 
     /// @notice LiquidationAdapter address — from controller storage.
     address public liquidationAdapter;
@@ -65,7 +65,7 @@ contract InstitutionalLoanVault is BaseVault {
 
     modifier onlyInstitution() {
         if (_config.positionTokenId == 0) revert PositionTokenIdNotSet();
-        if (positionNFT.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
+        if (positionToken.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
         _;
     }
 
@@ -90,12 +90,12 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice Initializes the vault clone. Called once by VaultController.
     /// @param config_ Vault configuration.
     /// @param riskConfig_ Risk parameters.
-    /// @param positionNFT_ InstitutionPositionNFT contract reference.
+    /// @param positionToken_ InstitutionPositionToken contract reference.
     /// @param liquidationAdapter_ LiquidationAdapter contract address.
     function initialize(
         VaultConfig calldata config_,
         RiskConfig calldata riskConfig_,
-        IInstitutionPositionNFT positionNFT_,
+        IInstitutionPositionToken positionToken_,
         address liquidationAdapter_
     ) external initializer {
         __BaseVault_init(
@@ -107,7 +107,7 @@ contract InstitutionalLoanVault is BaseVault {
 
         _config = config_;
         _riskConfig = riskConfig_;
-        positionNFT = positionNFT_;
+        positionToken = positionToken_;
         liquidationAdapter = liquidationAdapter_;
         _runtime.state = VaultState.WaitingForCollateral;
     }
@@ -120,11 +120,11 @@ contract InstitutionalLoanVault is BaseVault {
         uint40 ts = uint40(block.timestamp);
         _runtime.openStartTime = ts;
         _runtime.openEndTime = ts + _config.openDuration;
-        _runtime.state = VaultState.Open;
+        _runtime.state = VaultState.Fundraising;
         _runtime.isActive = true;
 
         emit VaultOpened(_runtime.openEndTime);
-        emit StateTransition(VaultState.CollateralDeposited, VaultState.Open, block.timestamp);
+        emit StateTransition(VaultState.CollateralDeposited, VaultState.Fundraising, block.timestamp);
     }
 
     /// @notice Governance bad-debt rescue. Pulls funds from controller and settles if sufficient.
