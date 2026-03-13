@@ -159,8 +159,8 @@ contract InstitutionalLoanVault is BaseVault {
         VaultState from = _runtime.state;
         _runtime.state = VaultState.Liquidated;
         emit StateTransition(from, VaultState.Liquidated, block.timestamp);
-        _settleProtocolShare();
         emit VaultLiquidated(available);
+        _settleProtocolShare();
     }
 
     /// @notice Updates liquidation threshold. Controller only.
@@ -371,6 +371,24 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
     // Internal — State-Changing
     // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Fundraising -> Lock or Failed transitions (only when fundraising window expires).
+    function _advanceFromOpen() internal override {
+        if (block.timestamp < _runtime.openEndTime) return;
+
+        if (_runtime.totalRaised >= _config.minBorrowCap) {
+            _runtime.state = VaultState.Lock;
+            _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
+            _runtime.minimumCollateralRequired =
+                (_config.initialCollateralRequired * _runtime.totalRaised) / _config.maxBorrowCap;
+            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
+            emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
+        } else {
+            _runtime.state = VaultState.Failed;
+            emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
+            emit VaultFailed(_runtime.totalRaised, _config.minBorrowCap);
+        }
+    }
 
     /**
      * @dev Shared liquidation execution: close factor check, seize calculation, token transfers.

@@ -340,24 +340,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         }
     }
 
-    /// @dev Fundraising -> Lock or Failed transitions (only when fundraising window expires).
-    function _advanceFromOpen() internal {
-        if (block.timestamp < _runtime.openEndTime) return;
-
-        if (_runtime.totalRaised >= _config.minBorrowCap) {
-            _runtime.state = VaultState.Lock;
-            _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
-            _runtime.minimumCollateralRequired =
-                (_config.initialCollateralRequired * _runtime.totalRaised) / _config.maxBorrowCap;
-            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
-            emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
-        } else {
-            _runtime.state = VaultState.Failed;
-            emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
-            emit VaultFailed(_runtime.totalRaised, _config.minBorrowCap);
-        }
-    }
-
     /**
      * @dev Transfers protocol fee and surplus to PSR. Sets settlementAmount.
      *      Called once when transitioning to Matured. Guarded by protocolShareSettled flag.
@@ -516,4 +498,12 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
 
         emit RaisedFundsClaimed(amount);
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Virtual Hooks
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Fundraising -> Lock or Failed transitions. Subcontracts override to define
+    ///      vault-type-specific post-fundraising behavior (e.g. Ceffu goes to InstitutionConfirmation).
+    function _advanceFromOpen() internal virtual {}
 }
