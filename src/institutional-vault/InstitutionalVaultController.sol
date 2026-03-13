@@ -244,12 +244,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @notice Updates liquidation threshold on a vault.
     /// @param vault Vault address.
     /// @param newLT New liquidation threshold (mantissa).
-    /// @custom:error InvalidLiquidationThreshold if newLT <= CF or newLT > MANTISSA.
+    /// @custom:error InvalidLiquidationThreshold if newLT == 0 or newLT > MANTISSA.
     function setLiquidationThreshold(address vault, uint256 newLT) external {
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        uint256 cf = IInstitutionalLoanVault(vault).riskConfig().collateralFactor;
-        if (newLT <= cf || newLT > MANTISSA) revert InvalidLiquidationThreshold();
+        if (newLT == 0 || newLT > MANTISSA) revert InvalidLiquidationThreshold();
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
 
@@ -481,7 +480,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         return VaultConfig({
             supplyAsset: c.supplyAsset,
             collateralAsset: c.collateralAsset,
-            requiredCollateral: c.requiredCollateral,
+            initialCollateralRequired: c.initialCollateralRequired,
             fixedAPY: c.fixedAPY,
             minBorrowCap: c.minBorrowCap,
             maxBorrowCap: c.maxBorrowCap,
@@ -497,12 +496,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @dev Validates vault and risk config at creation.
     function _validateVaultConfig(VaultConfig calldata c, RiskConfig calldata r) internal pure {
-        if (c.requiredCollateral == 0) revert InvalidConfig();
+        if (c.initialCollateralRequired == 0) revert InvalidConfig();
         if (c.minBorrowCap > c.maxBorrowCap) revert InvalidConfig();
         if (c.maxBorrowCap == 0) revert InvalidConfig();
         if (c.openDuration == 0 || c.lockDuration == 0 || c.settlementWindow == 0) revert InvalidConfig();
-        if (r.collateralFactor == 0 || r.collateralFactor >= MANTISSA) revert InvalidConfig();
-        if (r.liquidationThreshold <= r.collateralFactor || r.liquidationThreshold > MANTISSA) revert InvalidConfig();
+        if (r.liquidationThreshold == 0 || r.liquidationThreshold > MANTISSA) revert InvalidConfig();
         if (r.liquidationIncentive <= 1e18 || r.liquidationIncentive > 1.3e18) revert InvalidConfig();
         if (r.latePenaltyRate <= 1e18) revert InvalidConfig();
     }

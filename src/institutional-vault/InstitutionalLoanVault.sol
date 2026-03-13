@@ -26,7 +26,7 @@ contract InstitutionalLoanVault is BaseVault {
     // Storage (extends BaseVault)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Risk parameters — CF immutable, LT/LI/latePenaltyRate mutable via controller.
+    /// @notice Risk parameters — LT/LI/latePenaltyRate mutable via controller.
     RiskConfig internal _riskConfig;
 
     /// @notice InstitutionPositionToken contract — from controller storage.
@@ -58,6 +58,8 @@ contract InstitutionalLoanVault is BaseVault {
     error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
     error NotBadDebt();
+    error InsufficientRepayment();
+    error NoOutstandingDebt();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -143,19 +145,21 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         if (_getCollateralValueUSD() >= _getDebtValueUSD()) revert NotBadDebt();
-        if (repayAmount == 0) return;
 
         IERC20 supplyToken = IERC20(address(_config.supplyAsset));
-        supplyToken.safeTransferFrom(msg.sender, address(this), repayAmount);
+
+        if (repayAmount > 0) {
+            supplyToken.safeTransferFrom(msg.sender, address(this), repayAmount);
+        }
 
         uint256 available = supplyToken.balanceOf(address(this));
-        if (available >= _runtime.totalRaised) {
-            VaultState from = _runtime.state;
-            _runtime.state = VaultState.Liquidated;
-            emit StateTransition(from, VaultState.Liquidated, block.timestamp);
-            _settleProtocolShare();
-            emit VaultLiquidated(available);
-        }
+        if (available < _runtime.totalRaised) revert InsufficientRepayment();
+
+        VaultState from = _runtime.state;
+        _runtime.state = VaultState.Liquidated;
+        emit StateTransition(from, VaultState.Liquidated, block.timestamp);
+        _settleProtocolShare();
+        emit VaultLiquidated(available);
     }
 
     /// @notice Updates liquidation threshold. Controller only.
@@ -183,11 +187,12 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice HF-based liquidation. LiquidationAdapter only.
     /// @param repayAmount Amount of supply asset to repay.
     /// @return actualRepay Actual amount repaid after clamping to outstanding debt.
+    /// @custom:error NoOutstandingDebt if there is no debt to repay.
     /// @custom:event LiquidationExecuted
     function liquidate(uint256 repayAmount) external onlyLiquidationAdapter nonReentrant returns (uint256 actualRepay) {
         uint256 debt = _outstandingDebt();
+        if (debt == 0) revert NoOutstandingDebt();
         actualRepay = repayAmount > debt ? debt : repayAmount;
-        if (actualRepay == 0) return 0;
 
         address controller = vaultController;
         uint256 seizeAmount = IInstitutionalVaultController(controller).liquidateAllowed(
@@ -203,6 +208,7 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice Deadline-based liquidation. LiquidationAdapter only.
     /// @param repayAmount Amount of supply asset to repay.
     /// @return actualRepay Actual amount repaid after clamping to outstanding debt.
+    /// @custom:error NoOutstandingDebt if there is no debt to repay.
     /// @custom:error InvalidStateForOverdueLiquidation if not in SettlementDeadlineExceeded.
     /// @custom:event OverdueLiquidationExecuted
     function liquidateOverdueVault(
@@ -212,8 +218,8 @@ contract InstitutionalLoanVault is BaseVault {
         if (_runtime.state != VaultState.SettlementDeadlineExceeded) revert InvalidStateForOverdueLiquidation();
 
         uint256 debt = _outstandingDebt();
+        if (debt == 0) revert NoOutstandingDebt();
         actualRepay = repayAmount > debt ? debt : repayAmount;
-        if (actualRepay == 0) return 0;
 
         address controller = vaultController;
         uint256 seizeAmount = IInstitutionalVaultController(controller).liquidateOverdueAllowed(
@@ -230,9 +236,9 @@ contract InstitutionalLoanVault is BaseVault {
     // External — Institution-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deposits collateral. WaitingForCollateral: must meet requiredCollateral. Lock: top-up.
+    /// @notice Deposits collateral. WaitingForCollateral: must meet initialCollateralRequired. Lock: top-up.
     /// @param amount Amount of collateral tokens to deposit.
-    /// @custom:error InsufficientCollateral if total collateral < requiredCollateral in WaitingForCollateral.
+    /// @custom:error InsufficientCollateral if total collateral < initialCollateralRequired in WaitingForCollateral.
     /// @custom:event CollateralDeposited, StateTransition (if WaitingForCollateral -> CollateralDeposited)
     function depositCollateral(uint256 amount) external onlyInstitution nonReentrant whenNotPaused {
         _checkAndAdvanceState();
@@ -245,22 +251,23 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 totalCollateral = collateralToken.balanceOf(address(this));
         uint256 actual = totalCollateral - balanceBefore;
 
+        _runtime.totalCollateralDeposited += actual;
         emit CollateralDeposited(actual, totalCollateral);
 
         if (s == VaultState.WaitingForCollateral) {
-            if (totalCollateral < _config.requiredCollateral) revert InsufficientCollateral();
+            if (actual < _config.initialCollateralRequired) revert InsufficientCollateral();
 
-            _runtime.initialCollateralSupplied = totalCollateral;
-            _runtime.initialCollateralValuation = _getCollateralValueUSD();
+            _runtime.minimumCollateralRequired = _config.initialCollateralRequired;
+            _runtime.initialCollateralRequiredValuation = _getCollateralValueUSD();
 
             _runtime.state = VaultState.CollateralDeposited;
             emit StateTransition(VaultState.WaitingForCollateral, VaultState.CollateralDeposited, block.timestamp);
         }
     }
 
-    /// @notice Withdraws collateral. Lock: top-up only, LT-checked. Matured: all, unrestricted.
+    /// @notice Withdraws collateral. Lock: floor-checked + LT-checked. Matured: capped at totalCollateralDeposited.
     /// @param amount Amount of collateral tokens to withdraw.
-    /// @custom:error InsufficientCollateral if withdrawing more than top-up during Lock.
+    /// @custom:error InsufficientCollateral if withdrawal would breach minimumCollateralRequired floor or exceed deposited amount.
     /// @custom:event CollateralWithdrawn
     function withdrawCollateral(uint256 amount) external onlyInstitution nonReentrant whenNotPaused {
         _checkAndAdvanceState();
@@ -271,9 +278,12 @@ contract InstitutionalLoanVault is BaseVault {
 
         if (s == VaultState.Lock) {
             uint256 collateralBalance = collateralToken.balanceOf(address(this));
-            if (amount > collateralBalance - _runtime.initialCollateralSupplied) revert InsufficientCollateral();
+            if (amount > collateralBalance - _runtime.minimumCollateralRequired) revert InsufficientCollateral();
             IInstitutionalVaultController(vaultController).withdrawAllowed(address(this), amount);
         }
+
+        if (amount > _runtime.totalCollateralDeposited) revert InsufficientCollateral();
+        _runtime.totalCollateralDeposited -= amount;
 
         collateralToken.safeTransfer(msg.sender, amount);
         emit CollateralWithdrawn(amount);
@@ -301,6 +311,7 @@ contract InstitutionalLoanVault is BaseVault {
 
     /// @notice Repays outstanding debt. Anyone may call. Clamped to outstandingDebt.
     /// @param amount Amount of supply asset to repay.
+    /// @custom:error NoOutstandingDebt if there is no debt to repay.
     /// @custom:event Repaid
     function repay(uint256 amount) external nonReentrant whenNotPaused {
         VaultState s = _runtime.state;
@@ -309,8 +320,8 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         uint256 debt = _outstandingDebt();
+        if (debt == 0) revert NoOutstandingDebt();
         uint256 amountClamped = amount > debt ? debt : amount;
-        if (amountClamped == 0) return;
 
         IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), amountClamped);
 

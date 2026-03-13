@@ -343,6 +343,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         if (_runtime.totalRaised >= _config.minBorrowCap) {
             _runtime.state = VaultState.Lock;
             _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
+            _runtime.minimumCollateralRequired =
+                (_config.initialCollateralRequired * _runtime.totalRaised) / _config.maxBorrowCap;
             emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
             emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
         } else {

@@ -48,8 +48,19 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 **Decision:** `transferProtocolShare()` is called inline from `_checkAndAdvanceState()` when transitioning to Matured. The `protocolShareSettled` flag prevents double execution.
 **Why:** Atomic — state transition and settlement happen in the same transaction. No window between state change and fund distribution.
 
+### 10. Collateral Naming & Dynamic Floor (initialCollateral / minimumCollateralRequired)
+**Decision:** `VaultConfig.initialCollateral` (immutable) is the CF-based collateral amount sized for `maxBorrowCap`, pre-calculated at deployment. `VaultRuntime.minimumCollateralRequired` (mutable) is the locked collateral floor — starts equal to `initialCollateral` at first deposit, then recalculated proportionally at Lock: `initialCollateral × totalRaised / maxBorrowCap`. This frees excess collateral when less than max is raised.
+**Why:** If the fundraising only raises 60% of max, locking 100% of initial collateral is unnecessarily punitive. Proportional recalculation uses the CF implicitly (baked into `initialCollateral`) without needing oracle calls at Lock time.
+**Withdrawal rules during Lock:**
+1. Floor check: `amount ≤ balance − minimumCollateralRequired` (can't touch locked portion)
+2. LT-based HF check via `withdrawAllowed()` on remaining excess — ensures withdrawal doesn't make vault liquidatable
+
+### 11. CF Only for Sizing, LT Only for Liquidation/Withdrawal Checks
+**Decision:** `collateralFactor` is used exclusively for sizing `initialCollateral` (at deployment) and `minimumCollateralRequired` (at Lock). It is NOT used in runtime HF checks. `liquidationThreshold` is the sole parameter for liquidation eligibility and withdrawal health checks. `setLiquidationThreshold` no longer validates `LT > CF`.
+**Why:** With `minimumCollateralRequired` properly encoding the CF-based floor, a separate CF-gated HF check is redundant. LT handles the "is this vault safe to withdraw from / eligible for liquidation" question independently.
+
 ## Gotchas
 - **OZ v4.9 ERC4626Upgradeable uses IERC20Upgradeable** — not IERC20. The vault wraps IERC20 from OZ non-upgradeable for SafeERC20 operations on config assets.
-- **Two-tier collateral**: initial collateral locked until Matured, top-up collateral LT-gated during Lock.
+- **Collateral floor recalculated at Lock**: `minimumCollateralRequired` may differ from the initially deposited amount if `totalRaised < maxBorrowCap`. Institution can withdraw the freed excess (subject to LT check).
 - **Outstanding debt uses balance-based derivation**: `totalOwed - balanceOf(supplyAsset)`. No cumulative borrow/repay tracking.
 - **Shares are freely transferable** during Lock — no transfer restriction.

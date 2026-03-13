@@ -15,7 +15,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
 
     /// @notice Initializes the vault clone. Called once by VaultController at deployment.
     /// @param _config Vault configuration (assets, caps, durations, etc.).
-    /// @param _riskConfig Risk parameters (CF, LT, LI, latePenaltyRate).
+    /// @param _riskConfig Risk parameters (LT, LI, latePenaltyRate).
     /// @param _positionToken InstitutionPositionToken contract reference.
     /// @param _liquidationAdapter LiquidationAdapter contract address.
     function initialize(

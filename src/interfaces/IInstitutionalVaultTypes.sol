@@ -29,7 +29,7 @@ enum LiquidationType {
 struct VaultConfig {
     IERC20 supplyAsset;
     IERC20 collateralAsset;
-    uint256 requiredCollateral;
+    uint256 initialCollateralRequired; // sized for maxBorrowCap at deployment (off-chain via CF); institution must deposit >= this
     uint256 fixedAPY; // basis points (800 = 8%)
     uint256 minBorrowCap;
     uint256 maxBorrowCap;
@@ -42,9 +42,8 @@ struct VaultConfig {
     uint256 minSupplierDeposit; // minimum deposit in supply asset units; 0 = disable
 }
 
-/// @notice Risk parameters — CF immutable, LT/LI/latePenaltyRate mutable via VaultController.
+/// @notice Risk parameters — LT/LI/latePenaltyRate mutable via VaultController.
 struct RiskConfig {
-    uint256 collateralFactor; // mantissa, immutable — used at creation only for requiredCollateral sizing
     uint256 liquidationThreshold; // mantissa (0.85e18 = 85%), mutable
     uint256 liquidationIncentive; // Venus convention: 1.1e18 = 10% incentive, mutable
     uint256 latePenaltyRate; // mantissa — used for liquidateOverdueVault() seize calc, mutable
@@ -62,8 +61,9 @@ struct VaultRuntime {
     // Accounting
     uint256 totalRaised;
     uint256 totalOwed; // totalRaised + totalInterest, set at lock start
-    uint256 initialCollateralSupplied;
-    uint256 initialCollateralValuation; // USD snapshot at first deposit
+    uint256 minimumCollateralRequired; // locked floor; initially = initialCollateralRequired, recalculated at Lock based on totalRaised
+    uint256 totalCollateralDeposited; // cumulative collateral deposited by institution (decremented on withdrawal)
+    uint256 initialCollateralRequiredValuation; // USD snapshot at first deposit
     uint256 settlementAmount;
     // One-time flags
     bool fundsWithdrawn; // true after claimRaisedFunds()
