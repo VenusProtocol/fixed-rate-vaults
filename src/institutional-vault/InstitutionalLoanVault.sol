@@ -44,8 +44,6 @@ contract InstitutionalLoanVault is BaseVault {
     event VaultLiquidated(uint256 available);
     event CollateralDeposited(uint256 amount, uint256 totalCollateral);
     event CollateralWithdrawn(uint256 amount);
-    event RaisedFundsClaimed(uint256 amount);
-    event Repaid(uint256 amount, uint256 remainingDebt);
     event LiquidationExecuted(address indexed liquidator, uint256 repayAmount, uint256 collateralSeized);
     event OverdueLiquidationExecuted(address indexed settler, uint256 repayAmount, uint256 collateralSeized);
 
@@ -55,12 +53,10 @@ contract InstitutionalLoanVault is BaseVault {
 
     error InsufficientCollateral();
     error NotPositionHolder();
-    error AlreadyWithdrawn();
     error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
     error NotBadDebt();
     error InsufficientRepayment();
-    error NoOutstandingDebt();
     error NotLiquidatable();
     error ExceedsCloseFactor();
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
@@ -307,16 +303,7 @@ contract InstitutionalLoanVault is BaseVault {
     /// @custom:error AlreadyWithdrawn if funds already claimed.
     /// @custom:event RaisedFundsClaimed
     function claimRaisedFunds() external onlyInstitution nonReentrant whenNotPaused {
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Lock) revert InvalidState();
-        if (_runtime.fundsWithdrawn) revert AlreadyWithdrawn();
-
-        IERC20 supplyToken = IERC20(address(_config.supplyAsset));
-        uint256 amount = supplyToken.balanceOf(address(this));
-        _runtime.fundsWithdrawn = true;
-        supplyToken.safeTransfer(msg.sender, amount);
-
-        emit RaisedFundsClaimed(amount);
+        _claimRaisedFunds(msg.sender);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -328,19 +315,7 @@ contract InstitutionalLoanVault is BaseVault {
     /// @custom:error NoOutstandingDebt if there is no debt to repay.
     /// @custom:event Repaid
     function repay(uint256 amount) external nonReentrant whenNotPaused {
-        VaultState s = _runtime.state;
-        if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
-            revert InvalidState();
-        }
-
-        uint256 debt = _outstandingDebt();
-        if (debt == 0) revert NoOutstandingDebt();
-        uint256 amountClamped = amount > debt ? debt : amount;
-
-        IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), amountClamped);
-
-        emit Repaid(amountClamped, _outstandingDebt());
-        _checkAndAdvanceState();
+        _repay(msg.sender, amount);
     }
 
     // ──────────────────────────────────────────────────────────────────────

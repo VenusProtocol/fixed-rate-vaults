@@ -57,6 +57,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     event ShortfallDetected(uint256 totalOwed, uint256 available);
     event ProtocolFeePaid(uint256 amount);
     event SurplusTransferred(uint256 amount);
+    event RaisedFundsClaimed(uint256 amount);
+    event Repaid(uint256 amount, uint256 remainingDebt);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -66,6 +68,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     error BelowMinimumDepositAmount();
     error ExceedsMaxCap();
     error Unauthorized();
+    error AlreadyWithdrawn();
+    error NoOutstandingDebt();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -461,5 +465,55 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         uint256 owed = _runtime.totalOwed;
         return balance >= owed ? 0 : owed - balance;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Shared Helpers (state-changing)
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Repays outstanding debt by pulling supply asset from `payer`. Clamped to debt.
+     *      Subcontracts wrap this with their own access control.
+     * @param payer Address to pull supply asset from.
+     * @param amount Requested repay amount (will be clamped to outstanding debt).
+     * @custom:error InvalidState if vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt if there is no debt to repay.
+     * @custom:event Repaid
+     */
+    function _repay(address payer, uint256 amount) internal {
+        VaultState s = _runtime.state;
+        if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
+            revert InvalidState();
+        }
+
+        uint256 debt = _outstandingDebt();
+        if (debt == 0) revert NoOutstandingDebt();
+        uint256 amountClamped = amount > debt ? debt : amount;
+
+        IERC20(asset()).safeTransferFrom(payer, address(this), amountClamped);
+
+        emit Repaid(amountClamped, _outstandingDebt());
+        _checkAndAdvanceState();
+    }
+
+    /**
+     * @dev One-time fund withdrawal. Transfers all raised supply assets to `recipient`.
+     *      Subcontracts wrap this with their own access control.
+     * @param recipient Address to receive the raised funds.
+     * @custom:error InvalidState if vault is not in Lock state.
+     * @custom:error AlreadyWithdrawn if funds already claimed.
+     * @custom:event RaisedFundsClaimed
+     */
+    function _claimRaisedFunds(address recipient) internal {
+        _checkAndAdvanceState();
+        if (_runtime.state != VaultState.Lock) revert InvalidState();
+        if (_runtime.fundsWithdrawn) revert AlreadyWithdrawn();
+
+        IERC20 supplyToken = IERC20(asset());
+        uint256 amount = supplyToken.balanceOf(address(this));
+        _runtime.fundsWithdrawn = true;
+        supplyToken.safeTransfer(recipient, amount);
+
+        emit RaisedFundsClaimed(amount);
     }
 }
