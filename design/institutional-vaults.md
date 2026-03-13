@@ -9,9 +9,9 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 **Decision:** `BaseVault` (`src/BaseVault.sol`) is an abstract contract providing shared ERC-4626 mechanics, fundraising, interest, settlement (protocol fee waterfall), and core state machine. `InstitutionalLoanVault` inherits it and adds collateral, borrowing, risk checks, and liquidation.
 **Why:** Per the Unified Vault Architecture, the fundraising process is identical across vault types. Extracting BaseVault now enables the future CeffuVault to reuse the same base without duplication. `IVaultController` provides the minimal shared interface (PSR, comptroller) that BaseVault needs; `IInstitutionalVaultController` extends it with Institutional Vault-specific methods.
 **What lives where:**
-- BaseVault: `_checkAndAdvanceState()` (Open→Lock/Failed, Lock→PendingSettlement, PendingSettlement→Matured/SDE, SDE→Matured, Lock→Matured), `_settleProtocolShare()`, `_computeTotalInterest()`, `totalAssets()`, deposit/mint clamping, `_withdraw()`, `maxDeposit`/`maxMint`/`maxWithdraw`/`maxRedeem`, `closeVault()`, `pause()`/`unpause()`, `updateVaultState()`, `config()`/`runtime()`/`state()` views. Storage: `_config`, `_runtime`, `vaultController`.
-- InstitutionalLoanVault: `_outstandingDebt()` override (balance-based), `depositCollateral()`/`withdrawCollateral()`, `claimRaisedFunds()`, `repay()`, `repayBadDebt()`, `liquidate()`/`liquidateOverdueVault()`, `openVault()`, risk setters, oracle helpers. Storage: `_riskConfig`, `positionToken`, `liquidationAdapter`.
-- `_outstandingDebt()` is `internal view virtual` in BaseVault — each vault type defines its own debt derivation.
+- BaseVault: `_checkAndAdvanceState()` (Fundraising→Lock/Failed, Lock→PendingSettlement, PendingSettlement→Matured/SDE, SDE→Matured, Lock→Matured), `_advanceFromOpen()`, `_settleProtocolShare()`, `_computeTotalInterest()`, `_outstandingDebt()`, `outstandingDebt()`, `totalAssets()`, deposit/mint clamping, `_withdraw()`, `maxDeposit`/`maxMint`/`maxWithdraw`/`maxRedeem`, `closeVault()`, `pause()`/`unpause()`, `updateVaultState()`, `config()`/`runtime()`/`state()` views. Storage: `_config`, `_runtime`, `vaultController`.
+- InstitutionalLoanVault: `depositCollateral()`/`withdrawCollateral()`, `claimRaisedFunds()`, `repay()`, `repayBadDebt()`, `liquidate()`/`liquidateOverdueVault()`, `openVault()` (pre-calculates all timeline values), risk setters, oracle helpers. Storage: `_riskConfig`, `positionToken`, `liquidationAdapter`.
+- `_outstandingDebt()` is concrete in BaseVault (balance-based: `totalOwed - balanceOf(supplyAsset)`) — universal across vault types.
 
 ### 2. OZ v4.9 (Not v5)
 **Decision:** Using OpenZeppelin v4.9 contracts (ERC4626Upgradeable, ERC721, Ownable2Step, ReentrancyGuardUpgradeable, PausableUpgradeable).
@@ -37,7 +37,14 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 **Decision:** LiquidationAdapter accrues protocol share and governance sweeps to PSR via `sweepProtocolShareToReserve()`.
 **Why:** Batches PSR transfers for gas efficiency. Each liquidation only updates internal accounting.
 
-### 8. Settlement via _checkAndAdvanceState (Not Separate Function)
+### 8. No Intermediate State on Early Cap Fill — Predictable Lock Timing
+**Decision:** When max cap is reached before the fundraising window expires, the vault stays in `Fundraising` — no intermediate state. `maxDeposit()` returns 0, blocking further deposits. Lock only starts when `openEndTime` is reached via `_advanceFromOpen()`. All timeline values (`lockStartTime`, `lockEndTime`, `settlementDeadline`) are pre-calculated in `openVault()`.
+**Why:** Predictability for suppliers — the fundraising window always runs its full duration. The `InstitutionConfirmation` enum value (formerly `FundraisingClosed`) is reserved for subcontract use (e.g. Ceffu PendingFill) but not used by BaseVault or InstitutionalLoanVault.
+**Transitions:**
+- `Fundraising → Lock`: `timeReached && minMet` (via `_advanceFromOpen`)
+- `Fundraising → Failed`: `timeReached && !minMet`
+
+### 9. Settlement via _checkAndAdvanceState (Not Separate Function)
 **Decision:** `transferProtocolShare()` is called inline from `_checkAndAdvanceState()` when transitioning to Matured. The `protocolShareSettled` flag prevents double execution.
 **Why:** Atomic — state transition and settlement happen in the same transaction. No window between state change and fund distribution.
 

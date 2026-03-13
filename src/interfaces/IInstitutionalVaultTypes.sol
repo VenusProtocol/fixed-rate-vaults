@@ -9,7 +9,7 @@ enum VaultState {
     WaitingForCollateral, // 0 — Institutional Vault: awaiting institution collateral; Ceffu: skipped
     CollateralDeposited, // 1 — Institutional Vault: collateral in, awaiting open; Ceffu: skipped
     Fundraising, // 2 — suppliers deposit supply asset (both)
-    InstitutionConfirmation, // 3 — post-fundraising, pre-lock; Ceffu: PendingFill; Institutional Vault: skipped
+    InstitutionConfirmation, // 3 — reserved for subcontract use (e.g. Ceffu PendingFill)
     Lock, // 4 — funds committed, interest accruing (both)
     PendingSettlement, // 5 — maturity reached, awaiting repayment (both)
     SettlementDeadlineExceeded, // 6 — settlement deadline passed with outstanding debt (both)

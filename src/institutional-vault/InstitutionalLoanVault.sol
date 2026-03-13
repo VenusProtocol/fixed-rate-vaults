@@ -118,12 +118,17 @@ contract InstitutionalLoanVault is BaseVault {
         if (_runtime.state != VaultState.CollateralDeposited) revert InvalidState();
 
         uint40 ts = uint40(block.timestamp);
+        uint40 openEnd = ts + _config.openDuration;
+        uint40 lockEnd = openEnd + _config.lockDuration;
         _runtime.openStartTime = ts;
-        _runtime.openEndTime = ts + _config.openDuration;
+        _runtime.openEndTime = openEnd;
+        _runtime.lockStartTime = openEnd;
+        _runtime.lockEndTime = lockEnd;
+        _runtime.settlementDeadline = lockEnd + _config.settlementWindow;
         _runtime.state = VaultState.Fundraising;
         _runtime.isActive = true;
 
-        emit VaultOpened(_runtime.openEndTime);
+        emit VaultOpened(openEnd);
         emit StateTransition(VaultState.CollateralDeposited, VaultState.Fundraising, block.timestamp);
     }
 
@@ -317,12 +322,6 @@ contract InstitutionalLoanVault is BaseVault {
     // External — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Total remaining debt. Uses full fixed interest (totalOwed set at lock start).
-    /// @return Total outstanding debt in supply asset units.
-    function outstandingDebt() external view returns (uint256) {
-        return _outstandingDebt();
-    }
-
     /// @notice Current collateral value in USD via oracle.
     /// @return Collateral value in 18-decimal USD.
     function getCollateralValueUSD() external view returns (uint256) {
@@ -344,14 +343,6 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
-
-    /// @dev Balance-based outstanding debt: totalOwed - balanceOf(supplyAsset), floored at 0.
-    function _outstandingDebt() internal view override returns (uint256) {
-        uint256 totalOwed = _runtime.totalOwed;
-        if (totalOwed == 0) return 0;
-        uint256 balance = IERC20(address(_config.supplyAsset)).balanceOf(address(this));
-        return totalOwed > balance ? totalOwed - balance : 0;
-    }
 
     /// @dev Internal collateral USD valuation. Caches oracle and collateral address.
     function _getCollateralValueUSD() internal view returns (uint256) {

@@ -13,12 +13,14 @@ import { VaultConfig, VaultRuntime, VaultState } from "./interfaces/IInstitution
 import { IVaultController } from "./interfaces/IVaultController.sol";
 import { IProtocolShareReserve } from "./interfaces/IProtocolShareReserve.sol";
 
-/// @title BaseVault
-/// @notice Abstract base ERC-4626 vault providing shared mechanics for all Venus fixed-rate vault types:
-///         fundraising (time-bounded deposit window), interest computation, settlement (protocol fee waterfall),
-///         and core state machine transitions.
-/// @dev Subcontracts (InstitutionalLoanVault, future CeffuVault) inherit this and add type-specific logic.
-///      Deployed as EIP-1167 minimal proxy clones by the respective VaultController.
+/**
+ * @title BaseVault
+ * @notice Abstract base ERC-4626 vault providing shared mechanics for all Venus fixed-rate vault types:
+ *         fundraising (time-bounded deposit window), interest computation, settlement (protocol fee waterfall),
+ *         and core state machine transitions.
+ * @dev Subcontracts (InstitutionalLoanVault, future CeffuVault) inherit this and add type-specific logic.
+ *      Deployed as EIP-1167 minimal proxy clones by the respective VaultController.
+ */
 abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
     using SafeERC20 for IERC20;
 
@@ -26,9 +28,9 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Constants
     // ──────────────────────────────────────────────────────────────────────
 
-    uint256 internal constant BPS = 10_000;
-    uint256 internal constant MANTISSA = 1e18;
-    uint256 internal constant YEAR = 365 days;
+    uint256 public constant BPS = 10_000;
+    uint256 public constant MANTISSA = 1e18;
+    uint256 public constant YEAR = 365 days;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage
@@ -61,7 +63,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // ──────────────────────────────────────────────────────────────────────
 
     error InvalidState();
-    error BelowMinimumDeposit();
+    error BelowMinimumDepositAmount();
     error ExceedsMaxCap();
     error Unauthorized();
 
@@ -78,8 +80,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // External — Controller-gated (state-changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deactivates vault. Vault stays in terminal state; isActive flag set to false.
-    /// @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+    /**
+     * @notice Deactivates vault. Vault stays in terminal state; isActive flag set to false.
+     * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+     * @custom:event VaultClosed Emitted with the terminal state when the vault is deactivated.
+     */
     function closeVault() external onlyController {
         VaultState s = _runtime.state;
         if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
@@ -110,20 +115,34 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // External — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Returns the vault configuration.
-    /// @return Immutable VaultConfig struct set at initialization.
+    /**
+     * @notice Total remaining debt (totalOwed minus current supply asset balance).
+     * @return Outstanding debt in supply asset units. Zero if fully repaid.
+     */
+    function outstandingDebt() external view returns (uint256) {
+        return _outstandingDebt();
+    }
+
+    /**
+     * @notice Returns the vault configuration.
+     * @return Immutable VaultConfig struct set at initialization.
+     */
     function config() external view returns (VaultConfig memory) {
         return _config;
     }
 
-    /// @notice Returns the runtime state.
-    /// @return Mutable VaultRuntime struct tracking lifecycle progress.
+    /**
+     * @notice Returns the runtime state.
+     * @return Mutable VaultRuntime struct tracking lifecycle progress.
+     */
     function runtime() external view returns (VaultRuntime memory) {
         return _runtime;
     }
 
-    /// @notice Current vault lifecycle state.
-    /// @return Current VaultState enum value.
+    /**
+     * @notice Current vault lifecycle state.
+     * @return Current VaultState enum value.
+     */
     function state() external view returns (VaultState) {
         return _runtime.state;
     }
@@ -132,10 +151,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Public — ERC-4626 Overrides (state-changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deposits supply assets. Clamps to remaining capacity instead of reverting on excess.
-    /// @param assets Requested deposit amount in supply asset units.
-    /// @param receiver Address to receive minted shares.
-    /// @return shares Actual shares minted (may be less than requested if cap approached).
+    /**
+     * @notice Deposits supply assets during the Fundraising window.
+     *         Clamps to remaining capacity instead of reverting on excess.
+     * @param assets Requested deposit amount in supply asset units.
+     * @param receiver Address to receive minted shares.
+     * @return shares Actual shares minted (may be less than requested if cap approached).
+     * @custom:error ExceedsMaxCap If clamped deposit amount is zero (vault at capacity).
+     */
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
         uint256 maxAllowed = maxDeposit(receiver);
         uint256 assetsClamped = assets > maxAllowed ? maxAllowed : assets;
@@ -144,10 +167,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         _deposit(_msgSender(), receiver, assetsClamped, shares);
     }
 
-    /// @notice Mints shares. Clamps to remaining capacity instead of reverting on excess.
-    /// @param shares Requested shares to mint.
-    /// @param receiver Address to receive minted shares.
-    /// @return assets Actual supply assets pulled (may be less than requested if cap approached).
+    /**
+     * @notice Mints shares during the Fundraising window.
+     *         Clamps to remaining capacity instead of reverting on excess.
+     * @param shares Requested shares to mint.
+     * @param receiver Address to receive minted shares.
+     * @return assets Actual supply assets pulled (may be less than requested if cap approached).
+     * @custom:error ExceedsMaxCap If clamped share amount is zero (vault at capacity).
+     */
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
         uint256 maxSharesAllowed = maxMint(receiver);
         uint256 sharesClamped = shares > maxSharesAllowed ? maxSharesAllowed : shares;
@@ -160,9 +187,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Public — ERC-4626 Overrides (view)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice State-dependent total assets backing outstanding shares.
-    /// @dev Before Lock: actual balance. During Lock: totalRaised. Post-lock/terminal: balance.
-    /// @return Total assets in supply asset units.
+    /**
+     * @notice State-dependent total assets backing outstanding shares.
+     * @dev Before Lock: actual balance. During Lock: totalRaised. Post-lock/terminal: balance.
+     * @return Total assets in supply asset units.
+     */
     function totalAssets() public view override returns (uint256) {
         VaultState s = _runtime.state;
 
@@ -170,29 +199,35 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
             return _runtime.totalRaised;
         }
 
-        // WaitingForCollateral, CollateralDeposited, Open, PendingSettlement,
-        // SettlementDeadlineExceeded, Matured, Failed, Liquidated
-        return IERC20(address(_config.supplyAsset)).balanceOf(address(this));
+        // WaitingForCollateral, CollateralDeposited, Fundraising, InstitutionConfirmation,
+        // PendingSettlement, SettlementDeadlineExceeded, Matured, Failed, Liquidated
+        return IERC20(asset()).balanceOf(address(this));
     }
 
-    /// @notice Remaining deposit capacity in supply asset units. Zero outside Open state.
-    /// @param  /*receiver*/ Unused (no per-user limits).
-    /// @return Maximum depositable amount.
-    function maxDeposit(address) public view override returns (uint256) {
+    /**
+     * @notice Remaining deposit capacity in supply asset units. Zero outside Open state.
+     * @param /*receiver Unused — no per-user limits in base implementation.
+     * @return Maximum depositable amount.
+     */
+    function maxDeposit(address /* receiver */) public view override returns (uint256) {
         if (_runtime.state != VaultState.Fundraising) return 0;
         return _config.maxBorrowCap - _runtime.totalRaised;
     }
 
-    /// @notice Share equivalent of maxDeposit.
-    /// @param receiver Receiver address (passed through to maxDeposit).
-    /// @return Maximum mintable shares.
+    /**
+     * @notice Share equivalent of maxDeposit.
+     * @param receiver Receiver address (passed through to maxDeposit).
+     * @return Maximum mintable shares.
+     */
     function maxMint(address receiver) public view override returns (uint256) {
         return _convertToShares(maxDeposit(receiver), MathUpgradeable.Rounding.Down);
     }
 
-    /// @notice Withdrawable supply asset amount for a supplier. Zero outside terminal states.
-    /// @param owner Share holder address.
-    /// @return Maximum withdrawable supply asset amount.
+    /**
+     * @notice Withdrawable supply asset amount for a supplier. Zero outside terminal states.
+     * @param owner Share holder address.
+     * @return Maximum withdrawable supply asset amount.
+     */
     function maxWithdraw(address owner) public view override returns (uint256) {
         VaultState s = _runtime.state;
         if (s == VaultState.Matured || s == VaultState.Failed || s == VaultState.Liquidated) {
@@ -201,9 +236,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         return 0;
     }
 
-    /// @notice Redeemable share amount for a supplier. Zero outside terminal states.
-    /// @param owner Share holder address.
-    /// @return Maximum redeemable share amount.
+    /**
+     * @notice Redeemable share amount for a supplier. Zero outside terminal states.
+     * @param owner Share holder address.
+     * @return Maximum redeemable share amount.
+     */
     function maxRedeem(address owner) public view override returns (uint256) {
         VaultState s = _runtime.state;
         if (s == VaultState.Matured || s == VaultState.Failed || s == VaultState.Liquidated) {
@@ -216,11 +253,13 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Internal — Initialization
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Initializes the base vault. Called by subcontract initializers.
-    /// @param asset_ Supply asset (ERC-4626 underlying).
-    /// @param name_ Share token name.
-    /// @param symbol_ Share token symbol.
-    /// @param vaultController_ VaultController address (msg.sender of the deploy tx).
+    /**
+     * @dev Initializes the base vault. Called by subcontract initializers.
+     * @param asset_ Supply asset (ERC-4626 underlying).
+     * @param name_ Share token name.
+     * @param symbol_ Share token symbol.
+     * @param vaultController_ VaultController address (msg.sender of the deploy tx).
+     */
     function __BaseVault_init(
         IERC20Upgradeable asset_,
         string memory name_,
@@ -238,93 +277,90 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Internal — State Machine (state-changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Handles all time-based and condition-based auto-transitions.
-    ///      Called at the start of every state-changing external function.
-    ///      Subcontracts may override to extend with type-specific transitions.
+    /**
+     * @dev Handles all time-based and condition-based auto-transitions.
+     *      Called at the start of every state-changing external function.
+     *      Subcontracts may override to extend with type-specific transitions.
+     */
     function _checkAndAdvanceState() internal virtual {
         VaultState s = _runtime.state;
+        uint256 currentTime = block.timestamp;
 
-        // Open -> Lock or Failed
+        // Fundraising -> Lock or Failed (only when time expires)
         if (s == VaultState.Fundraising) {
             _advanceFromOpen();
             return;
         }
 
-        // Lock -> PendingSettlement (fall through to PS check)
-        if (s == VaultState.Lock && block.timestamp >= _runtime.lockEndTime) {
+        uint256 lockEnd = _runtime.lockEndTime;
+
+        // Lock -> PendingSettlement (falls through to check Matured/SettlementDeadlineExceeded)
+        if (s == VaultState.Lock && currentTime >= lockEnd) {
             _runtime.state = VaultState.PendingSettlement;
-            _runtime.settlementDeadline = uint40(block.timestamp) + _config.settlementWindow;
-            emit StateTransition(VaultState.Lock, VaultState.PendingSettlement, block.timestamp);
+            emit StateTransition(VaultState.Lock, VaultState.PendingSettlement, currentTime);
             s = VaultState.PendingSettlement;
         }
 
-        // PendingSettlement -> Matured or SettlementDeadlineExceeded
+        // PendingSettlement -> Matured (settles protocol share) or SettlementDeadlineExceeded
         if (s == VaultState.PendingSettlement) {
             uint256 debt = _outstandingDebt();
-            if (debt == 0 && block.timestamp >= _runtime.lockEndTime) {
+            if (debt == 0 && currentTime >= lockEnd) {
                 _runtime.state = VaultState.Matured;
-                emit StateTransition(VaultState.PendingSettlement, VaultState.Matured, block.timestamp);
+                emit StateTransition(VaultState.PendingSettlement, VaultState.Matured, currentTime);
                 _settleProtocolShare();
                 return;
             }
-            if (block.timestamp > _runtime.settlementDeadline && debt > 0) {
+            if (currentTime > _runtime.settlementDeadline && debt > 0) {
                 _runtime.state = VaultState.SettlementDeadlineExceeded;
                 emit StateTransition(
-                    VaultState.PendingSettlement, VaultState.SettlementDeadlineExceeded, block.timestamp
+                    VaultState.PendingSettlement, VaultState.SettlementDeadlineExceeded, currentTime
                 );
                 return;
             }
         }
 
         // SettlementDeadlineExceeded -> Matured
-        if (
-            s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0
-                && block.timestamp >= _runtime.lockEndTime
-        ) {
+        if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0 && currentTime >= lockEnd) {
             _runtime.state = VaultState.Matured;
-            emit StateTransition(VaultState.SettlementDeadlineExceeded, VaultState.Matured, block.timestamp);
+            emit StateTransition(VaultState.SettlementDeadlineExceeded, VaultState.Matured, currentTime);
             _settleProtocolShare();
             return;
         }
 
         // Lock -> Matured (early repayment — debt cleared and lock passed)
-        if (s == VaultState.Lock && _outstandingDebt() == 0 && block.timestamp >= _runtime.lockEndTime) {
+        if (s == VaultState.Lock && _outstandingDebt() == 0 && currentTime >= lockEnd) {
             _runtime.state = VaultState.Matured;
-            emit StateTransition(VaultState.Lock, VaultState.Matured, block.timestamp);
+            emit StateTransition(VaultState.Lock, VaultState.Matured, currentTime);
             _settleProtocolShare();
             return;
         }
     }
 
-    /// @dev Open -> Lock or Failed transitions. Extracted to reduce _checkAndAdvanceState complexity.
+    /// @dev Fundraising -> Lock or Failed transitions (only when fundraising window expires).
     function _advanceFromOpen() internal {
-        bool timeReached = block.timestamp >= _runtime.openEndTime;
-        bool minMet = _runtime.totalRaised >= _config.minBorrowCap;
-        bool maxReached = _runtime.totalRaised >= _config.maxBorrowCap;
+        if (block.timestamp < _runtime.openEndTime) return;
 
-        if (timeReached && !minMet) {
+        if (_runtime.totalRaised >= _config.minBorrowCap) {
+            _runtime.state = VaultState.Lock;
+            _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
+            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
+            emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
+        } else {
             _runtime.state = VaultState.Failed;
             emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
             emit VaultFailed(_runtime.totalRaised, _config.minBorrowCap);
-            return;
-        }
-        if ((timeReached && minMet) || maxReached) {
-            _runtime.lockStartTime = uint40(block.timestamp);
-            _runtime.lockEndTime = uint40(block.timestamp) + _config.lockDuration;
-            _runtime.totalOwed = _runtime.totalRaised + _computeTotalInterest();
-            _runtime.state = VaultState.Lock;
-            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
-            emit VaultLocked(_runtime.totalRaised, _runtime.lockEndTime);
         }
     }
 
-    /// @dev Transfers protocol fee and surplus to PSR. Sets settlementAmount.
-    ///      Called once when transitioning to Matured. Guarded by protocolShareSettled flag.
+    /**
+     * @dev Transfers protocol fee and surplus to PSR. Sets settlementAmount.
+     *      Called once when transitioning to Matured. Guarded by protocolShareSettled flag.
+     */
     function _settleProtocolShare() internal {
         if (_runtime.protocolShareSettled) return;
         _runtime.protocolShareSettled = true;
 
-        IERC20 supplyToken = IERC20(address(_config.supplyAsset));
+        IERC20 supplyToken = IERC20(asset());
         uint256 available = supplyToken.balanceOf(address(this));
         address psr = IVaultController(vaultController).protocolShareReserve();
         address comptrollerAddr = IVaultController(vaultController).comptroller();
@@ -349,7 +385,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
             supplyToken.safeTransfer(psr, psrTotal);
             IProtocolShareReserve(psr).updateAssetsState(
                 comptrollerAddr,
-                address(_config.supplyAsset),
+                asset(),
                 IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_PROTOCOL_FEE
             );
             if (protocolFee > 0) emit ProtocolFeePaid(protocolFee);
@@ -360,7 +396,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         emit SettlementConfirmed(_runtime.settlementAmount, protocolFee);
     }
 
-    /// @dev Internal deposit — state checks, min deposit, cap enforcement via clamping in public wrappers.
+    /**
+     * @dev Internal deposit — state checks, min deposit, cap enforcement via clamping in public wrappers.
+     * @custom:error InvalidState If vault is not in Fundraising state.
+     * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured minimum.
+     */
     function _deposit(
         address caller,
         address receiver,
@@ -369,7 +409,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     ) internal override nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         if (_runtime.state != VaultState.Fundraising) revert InvalidState();
-        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDeposit();
+        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDepositAmount();
 
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
@@ -377,8 +417,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         _checkAndAdvanceState();
     }
 
-    /// @dev Internal withdraw — only allowed in terminal states (Matured, Failed, Liquidated).
-    ///      No pause guard — supplier safety valve.
+    /**
+     * @dev Internal withdraw — only allowed in terminal states (Matured, Failed, Liquidated).
+     *      No pause guard — supplier safety valve.
+     * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+     */
     function _withdraw(
         address caller,
         address receiver,
@@ -399,14 +442,22 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Full-term interest for the entire lock duration.
-    /// @return Total interest amount in supply asset units.
+    /**
+     * @dev Full-term interest for the entire lock duration.
+     * @return Total interest amount in supply asset units.
+     */
     function _computeTotalInterest() internal view returns (uint256) {
         return (_runtime.totalRaised * _config.fixedAPY * _config.lockDuration) / (BPS * YEAR);
     }
 
-    /// @dev Returns the current outstanding debt. Subcontracts define derivation logic.
-    ///      InstitutionalLoanVault: balance-based (totalOwed - balanceOf(supplyAsset)).
-    ///      CeffuVault (future): repayment-receipt-based.
-    function _outstandingDebt() internal view virtual returns (uint256);
+    /**
+     * @dev Returns the current outstanding debt (totalOwed minus supply asset balance).
+     *      Repayment mechanism differs per vault type, but debt check is universal.
+     * @return Outstanding debt in supply asset units. Zero if fully repaid.
+     */
+    function _outstandingDebt() internal view returns (uint256) {
+        uint256 balance = IERC20(asset()).balanceOf(address(this));
+        uint256 owed = _runtime.totalOwed;
+        return balance >= owed ? 0 : owed - balance;
+    }
 }

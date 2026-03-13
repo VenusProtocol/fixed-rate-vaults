@@ -24,7 +24,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     // Constants
     // ──────────────────────────────────────────────────────────────────────
 
-    uint256 internal constant MANTISSA = 1e18;
+    uint256 public constant MANTISSA = 1e18;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage — Core Configuration

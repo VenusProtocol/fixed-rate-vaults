@@ -23,7 +23,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // Constants
     // ──────────────────────────────────────────────────────────────────────
 
-    uint256 internal constant MANTISSA = 1e18;
+    uint256 public constant MANTISSA = 1e18;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage
