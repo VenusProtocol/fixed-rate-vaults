@@ -58,7 +58,10 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     /// @param vault The vault address this token represents.
     /// @return tokenId The minted token ID.
     /// @custom:event PositionTokenMinted
-    function mint(address to, address vault) external onlyOwner returns (uint256 tokenId) {
+    function mint(
+        address to,
+        address vault
+    ) external onlyOwner returns (uint256 tokenId) {
         tokenId = nextTokenId++;
         tokenIdToVault[tokenId] = vault;
         vaultToTokenId[vault] = tokenId;
@@ -69,7 +72,9 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     /// @notice Approves a token for transfer. One-time — resets after transfer.
     /// @param tokenId The token ID to approve for transfer.
     /// @custom:event PositionTransferApproved
-    function approveTransfer(uint256 tokenId) external onlyOwner {
+    function approveTransfer(
+        uint256 tokenId
+    ) external onlyOwner {
         transferApproved[tokenId] = true;
         emit PositionTransferApproved(tokenId);
     }
@@ -77,7 +82,9 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     /// @notice Revokes a previously granted transfer approval.
     /// @param tokenId The token ID to revoke approval for.
     /// @custom:event PositionTransferRevoked
-    function revokeTransferApproval(uint256 tokenId) external onlyOwner {
+    function revokeTransferApproval(
+        uint256 tokenId
+    ) external onlyOwner {
         transferApproved[tokenId] = false;
         emit PositionTransferRevoked(tokenId);
     }

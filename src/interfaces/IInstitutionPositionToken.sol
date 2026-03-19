@@ -14,7 +14,10 @@ interface IInstitutionPositionToken is IERC721 {
     /// @param to The initial institution operator address.
     /// @param vault The vault address this token represents.
     /// @return tokenId The minted token ID.
-    function mint(address to, address vault) external returns (uint256 tokenId);
+    function mint(
+        address to,
+        address vault
+    ) external returns (uint256 tokenId);
 
     // ──────────────────────────────────────────────────────────────────────
     // Transfer Governance (VaultController only)
@@ -22,22 +25,32 @@ interface IInstitutionPositionToken is IERC721 {
 
     /// @notice Sets `transferApproved[tokenId] = true`. Required before any transfer can occur.
     /// @param tokenId The token ID to approve for transfer.
-    function approveTransfer(uint256 tokenId) external;
+    function approveTransfer(
+        uint256 tokenId
+    ) external;
 
     /// @notice Revokes a previously granted transfer approval.
     /// @param tokenId The token ID to revoke approval for.
-    function revokeTransferApproval(uint256 tokenId) external;
+    function revokeTransferApproval(
+        uint256 tokenId
+    ) external;
 
     // ──────────────────────────────────────────────────────────────────────
     // Views
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Returns the vault address associated with a token ID.
-    function tokenIdToVault(uint256 tokenId) external view returns (address);
+    function tokenIdToVault(
+        uint256 tokenId
+    ) external view returns (address);
 
     /// @notice Returns the token ID associated with a vault address.
-    function vaultToTokenId(address vault) external view returns (uint256);
+    function vaultToTokenId(
+        address vault
+    ) external view returns (uint256);
 
     /// @notice Whether governance has approved the transfer of a specific token.
-    function transferApproved(uint256 tokenId) external view returns (bool);
+    function transferApproved(
+        uint256 tokenId
+    ) external view returns (bool);
 }

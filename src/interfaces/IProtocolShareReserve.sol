@@ -11,5 +11,9 @@ interface IProtocolShareReserve {
     }
 
     /// @notice Updates accounting state after an asset transfer to PSR.
-    function updateAssetsState(address comptroller, address asset, IncomeType incomeType) external;
+    function updateAssetsState(
+        address comptroller,
+        address asset,
+        IncomeType incomeType
+    ) external;
 }

@@ -6,15 +6,15 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @notice Shared vault lifecycle states — single enum for all vault types (Institutional Vault, Ceffu).
 ///         Each vault type uses a subset; unused states are simply skipped in transitions.
 enum VaultState {
-    WaitingForCollateral, // 0 — Institutional Vault: awaiting institution collateral; Ceffu: skipped
-    CollateralDeposited, // 1 — Institutional Vault: collateral in, awaiting open; Ceffu: skipped
-    Fundraising, // 2 — suppliers deposit supply asset (both)
+    WaitingForMargin, // 0 — Institutional Vault: awaiting institution margin deposit; Ceffu: skipped
+    MarginDeposited, // 1 — Institutional Vault: margin in, awaiting open; Ceffu: skipped
+    Fundraising, // 2 — suppliers deposit supply asset; institution deposits remaining collateral (both)
     InstitutionConfirmation, // 3 — reserved for subcontract use (e.g. Ceffu PendingFill)
     Lock, // 4 — funds committed, interest accruing (both)
     PendingSettlement, // 5 — maturity reached, awaiting repayment (both)
     SettlementDeadlineExceeded, // 6 — settlement deadline passed with outstanding debt (both)
     Matured, // 7 — settlement complete, shares redeemable (both)
-    Failed, // 8 — fundraising below min cap (both; Ceffu: Cancelled)
+    Failed, // 8 — fundraising below min cap OR institution default (both; Ceffu: Cancelled)
     Liquidated, // 9 — Institutional Vault: bad-debt rescue; Ceffu: N/A
     Closed // 10 — governance delisted; Ceffu uses this; Institutional Vault uses isActive flag
 }
@@ -29,7 +29,8 @@ enum LiquidationType {
 struct VaultConfig {
     IERC20 supplyAsset;
     IERC20 collateralAsset;
-    uint256 initialCollateralRequired; // sized for maxBorrowCap at deployment (off-chain via CF); institution must deposit >= this
+    uint256 idealCollateralAmount; // total collateral required at full capacity (maxBorrowCap), sized off-chain via CF
+    uint256 marginRate; // mantissa (0.01e18 = 1%) — margin percentage relative to idealCollateralAmount
     uint256 fixedAPY; // basis points (800 = 8%)
     uint256 minBorrowCap;
     uint256 maxBorrowCap;
@@ -61,14 +62,16 @@ struct VaultRuntime {
     // Accounting
     uint256 totalRaised;
     uint256 totalOwed; // totalRaised + totalInterest, set at lock start
-    uint256 minimumCollateralRequired; // locked floor; initially = initialCollateralRequired, recalculated at Lock based on totalRaised
+    uint256 minimumCollateralRequired; // locked floor; recalculated at Lock based on totalRaised
     uint256 totalCollateralDeposited; // cumulative collateral deposited by institution (decremented on withdrawal)
-    uint256 initialCollateralRequiredValuation; // USD snapshot at first deposit
+    uint256 idealCollateralValuation; // USD snapshot of collateral at Lock entry
     uint256 settlementAmount;
+    uint256 confiscatedMarginRemaining; // margin amount left to distribute to lenders (Scenario B); 0 in Scenario A
     // One-time flags
     bool fundsWithdrawn; // true after claimRaisedFunds()
     bool protocolShareSettled; // true after transferProtocolShare()
     bool isActive; // true when openVault() called; false when closeVault() called
+    bool institutionDefaulted; // true when Failed due to insufficient collateral (Scenario B)
 }
 
 /// @notice Summary info returned by controller registry views.

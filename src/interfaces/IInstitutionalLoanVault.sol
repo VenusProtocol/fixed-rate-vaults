@@ -29,7 +29,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Lifecycle (Controller only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Transitions CollateralDeposited -> Open. Sets timestamps and isActive.
+    /// @notice Transitions MarginDeposited -> Open. Sets timestamps and isActive.
     function openVault() external;
 
     /// @notice Sets isActive = false. Vault stays in Matured/Failed/Liquidated.
@@ -52,20 +52,26 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Institution Functions
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deposits collateral into the vault. WaitingForCollateral or Lock states.
+    /// @notice Deposits collateral into the vault. WaitingForMargin, Fundraising, or Lock states.
     /// @param amount Amount of collateral tokens to deposit.
-    function depositCollateral(uint256 amount) external;
+    function depositCollateral(
+        uint256 amount
+    ) external;
 
-    /// @notice Withdraws collateral. Lock: top-up only, LT-checked. Matured: all, unrestricted.
+    /// @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured: unrestricted.
     /// @param amount Amount of collateral tokens to withdraw.
-    function withdrawCollateral(uint256 amount) external;
+    function withdrawCollateral(
+        uint256 amount
+    ) external;
 
     /// @notice One-time function. Transfers all raised supply assets to institution operator.
     function claimRaisedFunds() external;
 
     /// @notice Repays outstanding debt. Not restricted to institution — anyone may repay.
     /// @param amount Amount of supply asset to repay (clamped to outstandingDebt).
-    function repay(uint256 amount) external;
+    function repay(
+        uint256 amount
+    ) external;
 
     // ──────────────────────────────────────────────────────────────────────
     // Bad-Debt Rescue (Controller only)
@@ -73,7 +79,9 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
 
     /// @notice Governance bad-debt rescue. Requires collateralUSD < debtUSD.
     /// @param repayAmount Amount to pull from controller.
-    function repayBadDebt(uint256 repayAmount) external;
+    function repayBadDebt(
+        uint256 repayAmount
+    ) external;
 
     // ──────────────────────────────────────────────────────────────────────
     // Liquidation (LiquidationAdapter only)
@@ -82,25 +90,35 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     /// @notice HF-based liquidation. Returns actual repay amount (clamped to debt).
     /// @param repayAmount Amount of supply asset to repay.
     /// @return actualRepay Actual amount repaid after clamping.
-    function liquidate(uint256 repayAmount) external returns (uint256 actualRepay);
+    function liquidate(
+        uint256 repayAmount
+    ) external returns (uint256 actualRepay);
 
     /// @notice Deadline-based liquidation for overdue vaults. Returns actual repay amount.
     /// @param repayAmount Amount of supply asset to repay.
     /// @return actualRepay Actual amount repaid after clamping.
-    function liquidateOverdueVault(uint256 repayAmount) external returns (uint256 actualRepay);
+    function liquidateOverdueVault(
+        uint256 repayAmount
+    ) external returns (uint256 actualRepay);
 
     // ──────────────────────────────────────────────────────────────────────
     // Risk Parameter Setters (Controller only)
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Updates liquidation threshold. Validated by controller before calling.
-    function setLiquidationThreshold(uint256 newLT) external;
+    function setLiquidationThreshold(
+        uint256 newLT
+    ) external;
 
     /// @notice Updates liquidation incentive. Validated by controller before calling.
-    function setLiquidationIncentive(uint256 newLI) external;
+    function setLiquidationIncentive(
+        uint256 newLI
+    ) external;
 
     /// @notice Updates late penalty rate. Validated by controller before calling.
-    function setLatePenaltyRate(uint256 newRate) external;
+    function setLatePenaltyRate(
+        uint256 newRate
+    ) external;
 
     // ──────────────────────────────────────────────────────────────────────
     // Views

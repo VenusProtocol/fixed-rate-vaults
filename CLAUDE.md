@@ -67,10 +67,12 @@ Within the functions section, order by visibility:
 `external` → `public` → `internal` → `private`
 
 Within each visibility group:
+
 1. ACM / access-gated (e.g. `onlyOwner`, `_checkAccessAllowed`) first
 2. Permissionless second
 
 Within each access level:
+
 1. State-changing
 2. `view`
 3. `pure`
@@ -90,10 +92,12 @@ Within each access level:
 ### NatSpec
 
 **Comment style:**
+
 - **Multiline** NatSpec (2+ tags or long descriptions) → use `/** ... */` block comments.
 - **Single-line** NatSpec (one short tag) → use `///` inline comments.
 
 Required on all `external` and `public` functions **and** their interface declarations:
+
 - `@notice` — what the function does
 - `@param` — each parameter
 - `@return` — each return value
@@ -101,6 +105,7 @@ Required on all `external` and `public` functions **and** their interface declar
 - `@custom:event` — each event the function can emit
 
 **Error attribution rule:**
+
 - `external`/`public` functions document **only** errors thrown directly in their own body.
 - Errors originating from `internal` helpers are documented on those `internal` functions instead.
 - **Interface declarations** may include the full list of possible errors (direct + internal) for integrator convenience. Only include errors added by the feature contract — no need to document errors from imported OZ or ACM base contracts.
@@ -144,6 +149,7 @@ Required on all `external` and `public` functions **and** their interface declar
 ### Task Planning — MANDATORY (`.task_plan.md`)
 
 Always create `.task_plan.md` at the project root before starting feature work. This file:
+
 - Contains the execution plan with phases and checklist
 - Tracks progress, errors, and current status
 - Is **not tracked by git** — purely a working file
@@ -151,11 +157,13 @@ Always create `.task_plan.md` at the project root before starting feature work. 
 - **Must include a "Solidity Rules" section** at the top — read the **Code Design** section from `CLAUDE.md` and write a condensed summary of all rules into the plan file as a quick-reference checklist. This keeps the rules in working context even if `CLAUDE.md` gets compressed.
 
 ### Subagent Strategy
+
 - Use subagents for side-effect-free tasks that don't need to persist in the main context window — e.g., when the user asks to explain a piece of code, asks "where is X used?", or wants to compare approaches ("would it be better to do A or B?"). Delegate the research/exploration to a subagent and return the answer.
 
 ### Feature Docs (`feature-docs/`)
 
 At key milestones during feature development, update `feature-docs/<feature-name>.md` capturing:
+
 - Feature name and one-line summary
 - Key design decisions and **why** they were made
 - Trade-offs considered
@@ -166,6 +174,7 @@ Always read existing notes before starting work on a feature.
 ### Research (`research/`)
 
 For every feature, check `research/<feature-name>/` for:
+
 - **Design docs** — architecture, interface design, flow diagrams
 - **Implementation docs** — step-by-step implementation details
 - **Reference material** — relevant protocol docs, external references
@@ -188,5 +197,6 @@ These files can be created by the user (pasted in) or by Claude during research 
 ### Venus Context
 
 For Venus-related source code search:
+
 - **Local (submodules)**: `lib/governance-contracts/` (ACM, governance, cross-chain)
 - **Remote**: https://github.com/VenusProtocol (consider use `gh`)

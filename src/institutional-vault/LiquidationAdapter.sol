@@ -2,7 +2,9 @@
 pragma solidity 0.8.25;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
@@ -132,7 +134,10 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @param liquidator Address to update.
     /// @param approved Whether to approve or remove.
     /// @custom:event LiquidatorWhitelistUpdated
-    function setLiquidatorWhitelist(address liquidator, bool approved) external {
+    function setLiquidatorWhitelist(
+        address liquidator,
+        bool approved
+    ) external {
         _checkAccessAllowed("setLiquidatorWhitelist(address,bool)");
         isWhitelistedLiquidator[liquidator] = approved;
         emit LiquidatorWhitelistUpdated(liquidator, approved);
@@ -142,7 +147,10 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @param settler Address to update.
     /// @param approved Whether to approve or remove.
     /// @custom:event SettlerWhitelistUpdated
-    function setSettlerWhitelist(address settler, bool approved) external {
+    function setSettlerWhitelist(
+        address settler,
+        bool approved
+    ) external {
         _checkAccessAllowed("setSettlerWhitelist(address,bool)");
         isWhitelistedSettler[settler] = approved;
         emit SettlerWhitelistUpdated(settler, approved);
@@ -152,7 +160,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @param share New share (0 <= share <= 1e18).
     /// @custom:error InvalidShare if share > 1e18.
     /// @custom:event ProtocolLiquidationShareUpdated
-    function setProtocolLiquidationShare(uint256 share) external {
+    function setProtocolLiquidationShare(
+        uint256 share
+    ) external {
         _checkAccessAllowed("setProtocolLiquidationShare(uint256)");
         if (share > MANTISSA) revert InvalidShare();
         protocolLiquidationShare = share;
@@ -163,7 +173,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @param newCF New close factor (0 < newCF <= 1e18).
     /// @custom:error InvalidCloseFactor if zero or > 1e18.
     /// @custom:event CloseFactorUpdated
-    function setCloseFactor(uint256 newCF) external {
+    function setCloseFactor(
+        uint256 newCF
+    ) external {
         _checkAccessAllowed("setCloseFactor(uint256)");
         if (newCF == 0 || newCF > MANTISSA) revert InvalidCloseFactor();
         closeFactor = newCF;
@@ -173,7 +185,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice Update ProtocolShareReserve address.
     /// @param psr New PSR address.
     /// @custom:error InvalidAddress if zero address.
-    function setProtocolShareReserve(address psr) external {
+    function setProtocolShareReserve(
+        address psr
+    ) external {
         _checkAccessAllowed("setProtocolShareReserve(address)");
         if (psr == address(0)) revert InvalidAddress();
         protocolShareReserve = psr;
@@ -182,7 +196,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice Update comptroller address for PSR.
     /// @param comptroller_ New comptroller address.
     /// @custom:error InvalidAddress if zero address.
-    function setComptroller(address comptroller_) external {
+    function setComptroller(
+        address comptroller_
+    ) external {
         _checkAccessAllowed("setComptroller(address)");
         if (comptroller_ == address(0)) revert InvalidAddress();
         comptroller = comptroller_;
@@ -191,16 +207,19 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice Transfer accrued protocol share for the given collateral token to PSR.
     /// @param collateral Collateral token address.
     /// @custom:event ProtocolShareSweptToReserve
-    function sweepProtocolShareToReserve(address collateral) external {
+    function sweepProtocolShareToReserve(
+        address collateral
+    ) external {
         _checkAccessAllowed("sweepProtocolShareToReserve(address)");
         uint256 amount = protocolShareAccrued[collateral];
         if (amount == 0) return;
 
         protocolShareAccrued[collateral] = 0;
         IERC20(collateral).safeTransfer(protocolShareReserve, amount);
-        IProtocolShareReserve(protocolShareReserve).updateAssetsState(
-            comptroller, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION
-        );
+        IProtocolShareReserve(protocolShareReserve)
+            .updateAssetsState(
+                comptroller, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION
+            );
         emit ProtocolShareSweptToReserve(collateral, amount);
     }
 
@@ -211,14 +230,20 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice HF-based liquidation. Whitelisted liquidator only.
     /// @param vault Vault address to liquidate.
     /// @param repayAmount Amount of supply asset to repay.
-    function liquidate(address vault, uint256 repayAmount) external onlyWhitelistedLiquidator nonReentrant {
+    function liquidate(
+        address vault,
+        uint256 repayAmount
+    ) external onlyWhitelistedLiquidator nonReentrant {
         _executeLiquidation(vault, repayAmount, false);
     }
 
     /// @notice Deadline-based liquidation. Whitelisted settler only.
     /// @param vault Vault address to liquidate.
     /// @param repayAmount Amount of supply asset to repay.
-    function liquidateOverdueVault(address vault, uint256 repayAmount) external onlyWhitelistedSettler nonReentrant {
+    function liquidateOverdueVault(
+        address vault,
+        uint256 repayAmount
+    ) external onlyWhitelistedSettler nonReentrant {
         _executeLiquidation(vault, repayAmount, true);
     }
 
@@ -227,7 +252,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // ──────────────────────────────────────────────────────────────────────
 
     /// @dev Shared liquidation execution logic. Caches config to avoid repeated external calls.
-    function _executeLiquidation(address vault, uint256 repayAmount, bool isOverdue) internal {
+    function _executeLiquidation(
+        address vault,
+        uint256 repayAmount,
+        bool isOverdue
+    ) internal {
         if (!IInstitutionalVaultController(vaultController).isRegistered(vault)) revert VaultNotRegistered();
 
         IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);

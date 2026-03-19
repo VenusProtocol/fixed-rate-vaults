@@ -145,9 +145,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
         // Assemble config with tokenId and initialize
         VaultConfig memory assembledConfig = _assembleVaultConfig(_config, tokenId);
-        IInstitutionalLoanVault(vault).initialize(
-            assembledConfig, _riskConfig, positionToken, liquidationAdapter
-        );
+        IInstitutionalLoanVault(vault).initialize(assembledConfig, _riskConfig, positionToken, liquidationAdapter);
 
         // Register
         institutionNonce[institution]++;
@@ -157,9 +155,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         emit VaultCreated(vault, institution);
     }
 
-    /// @notice Transitions CollateralDeposited -> Open on a vault.
+    /// @notice Transitions MarginDeposited -> Open on a vault.
     /// @param vault Vault address.
-    function openVault(address vault) external {
+    function openVault(
+        address vault
+    ) external {
         _checkAccessAllowed("openVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         IInstitutionalLoanVault(vault).openVault();
@@ -167,7 +167,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @notice Emergency pause on vault.
     /// @param vault Vault address.
-    function pauseVault(address vault) external {
+    function pauseVault(
+        address vault
+    ) external {
         _checkAccessAllowed("pauseVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         IInstitutionalLoanVault(vault).pause();
@@ -175,7 +177,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @notice Unpause vault.
     /// @param vault Vault address.
-    function unpauseVault(address vault) external {
+    function unpauseVault(
+        address vault
+    ) external {
         _checkAccessAllowed("unpauseVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         IInstitutionalLoanVault(vault).unpause();
@@ -183,7 +187,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @notice Sets isActive = false on vault.
     /// @param vault Vault address.
-    function closeVault(address vault) external {
+    function closeVault(
+        address vault
+    ) external {
         _checkAccessAllowed("closeVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         IInstitutionalLoanVault(vault).closeVault();
@@ -192,7 +198,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
     /// @param vault Vault address.
     /// @param repayAmount Amount to pull from caller.
-    function repayBadDebt(address vault, uint256 repayAmount) external {
+    function repayBadDebt(
+        address vault,
+        uint256 repayAmount
+    ) external {
         _checkAccessAllowed("repayBadDebt(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
 
@@ -212,7 +221,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @notice Approves transfer of the vault's position token.
     /// @param vault Vault address.
-    function approvePositionTransfer(address vault) external {
+    function approvePositionTransfer(
+        address vault
+    ) external {
         _checkAccessAllowed("approvePositionTransfer(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         uint256 tokenId = positionToken.vaultToTokenId(vault);
@@ -221,7 +232,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @notice Revokes a previously granted approval.
     /// @param vault Vault address.
-    function revokePositionTransfer(address vault) external {
+    function revokePositionTransfer(
+        address vault
+    ) external {
         _checkAccessAllowed("revokePositionTransfer(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         uint256 tokenId = positionToken.vaultToTokenId(vault);
@@ -232,7 +245,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param vault Vault address.
     /// @param newLT New liquidation threshold (mantissa).
     /// @custom:error InvalidLiquidationThreshold if newLT == 0 or newLT > MANTISSA.
-    function setLiquidationThreshold(address vault, uint256 newLT) external {
+    function setLiquidationThreshold(
+        address vault,
+        uint256 newLT
+    ) external {
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA) revert InvalidLiquidationThreshold();
@@ -243,7 +259,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param vault Vault address.
     /// @param newLI New liquidation incentive (mantissa).
     /// @custom:error InvalidLiquidationIncentive if outside (1e18, 1.3e18] range.
-    function setLiquidationIncentive(address vault, uint256 newLI) external {
+    function setLiquidationIncentive(
+        address vault,
+        uint256 newLI
+    ) external {
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= 1e18 || newLI > 1.3e18) revert InvalidLiquidationIncentive();
@@ -254,7 +273,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param vault Vault address.
     /// @param newRate New late penalty rate (mantissa).
     /// @custom:error InvalidLatePenaltyRate if newRate <= 1e18.
-    function setLatePenaltyRate(address vault, uint256 newRate) external {
+    function setLatePenaltyRate(
+        address vault,
+        uint256 newRate
+    ) external {
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= 1e18) revert InvalidLatePenaltyRate();
@@ -265,7 +287,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param impl New implementation address.
     /// @custom:error InvalidAddress if zero address.
     /// @custom:event VaultImplementationUpdated
-    function setVaultImplementation(address impl) external {
+    function setVaultImplementation(
+        address impl
+    ) external {
         _checkAccessAllowed("setVaultImplementation(address)");
         if (impl == address(0)) revert InvalidAddress();
         emit VaultImplementationUpdated(vaultImplementation, impl);
@@ -276,7 +300,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param adapter New adapter address.
     /// @custom:error InvalidAddress if zero address.
     /// @custom:event LiquidationAdapterUpdated
-    function setLiquidationAdapter(address adapter) external {
+    function setLiquidationAdapter(
+        address adapter
+    ) external {
         _checkAccessAllowed("setLiquidationAdapter(address)");
         if (adapter == address(0)) revert InvalidAddress();
         emit LiquidationAdapterUpdated(liquidationAdapter, adapter);
@@ -287,7 +313,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param oracle_ New oracle address.
     /// @custom:error InvalidAddress if zero address.
     /// @custom:event OracleUpdated
-    function setOracle(address oracle_) external {
+    function setOracle(
+        address oracle_
+    ) external {
         _checkAccessAllowed("setOracle(address)");
         if (oracle_ == address(0)) revert InvalidAddress();
         emit OracleUpdated(oracle, oracle_);
@@ -298,7 +326,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param psr New PSR address.
     /// @custom:error InvalidAddress if zero address.
     /// @custom:event ProtocolShareReserveUpdated
-    function setProtocolShareReserve(address psr) external {
+    function setProtocolShareReserve(
+        address psr
+    ) external {
         _checkAccessAllowed("setProtocolShareReserve(address)");
         if (psr == address(0)) revert InvalidAddress();
         emit ProtocolShareReserveUpdated(protocolShareReserve, psr);
@@ -309,7 +339,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @param comptroller_ New comptroller address.
     /// @custom:error InvalidAddress if zero address.
     /// @custom:event ComptrollerUpdated
-    function setComptroller(address comptroller_) external {
+    function setComptroller(
+        address comptroller_
+    ) external {
         _checkAccessAllowed("setComptroller(address)");
         if (comptroller_ == address(0)) revert InvalidAddress();
         emit ComptrollerUpdated(comptroller, comptroller_);
@@ -323,7 +355,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @notice Predicts the next vault address for a given institution.
     /// @param institution Institution operator address.
     /// @return Predicted vault address.
-    function predictVaultAddress(address institution) external view returns (address) {
+    function predictVaultAddress(
+        address institution
+    ) external view returns (address) {
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
         return Clones.predictDeterministicAddress(vaultImplementation, salt);
     }
@@ -343,7 +377,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
                 totalRaised: vault.runtime().totalRaised,
                 outstandingDebt: vault.outstandingDebt()
             });
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
         return infos;
     }
@@ -366,7 +402,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         return VaultConfig({
             supplyAsset: c.supplyAsset,
             collateralAsset: c.collateralAsset,
-            initialCollateralRequired: c.initialCollateralRequired,
+            idealCollateralAmount: c.idealCollateralAmount,
+            marginRate: c.marginRate,
             fixedAPY: c.fixedAPY,
             minBorrowCap: c.minBorrowCap,
             maxBorrowCap: c.maxBorrowCap,
@@ -381,8 +418,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     }
 
     /// @dev Validates vault and risk config at creation.
-    function _validateVaultConfig(VaultConfig calldata c, RiskConfig calldata r) internal pure {
-        if (c.initialCollateralRequired == 0) revert InvalidConfig();
+    function _validateVaultConfig(
+        VaultConfig calldata c,
+        RiskConfig calldata r
+    ) internal pure {
+        if (c.idealCollateralAmount == 0) revert InvalidConfig();
+        if (c.marginRate == 0 || c.marginRate > MANTISSA) revert InvalidConfig();
         if (c.minBorrowCap > c.maxBorrowCap) revert InvalidConfig();
         if (c.maxBorrowCap == 0) revert InvalidConfig();
         if (c.openDuration == 0 || c.lockDuration == 0 || c.settlementWindow == 0) revert InvalidConfig();
@@ -390,5 +431,4 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         if (r.liquidationIncentive <= 1e18 || r.liquidationIncentive > 1.3e18) revert InvalidConfig();
         if (r.latePenaltyRate <= 1e18) revert InvalidConfig();
     }
-
 }
