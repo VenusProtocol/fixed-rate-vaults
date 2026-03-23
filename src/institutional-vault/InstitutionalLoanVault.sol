@@ -74,14 +74,13 @@ contract InstitutionalLoanVault is BaseVault {
     /// @dev Restricts to the current owner of the vault's PositionToken. Ownership is transferable —
     ///      if the institution transfers the token, the new holder gains access to position-holder gated functions.
     modifier onlyPositionHolder() {
-        if (_config.positionTokenId == 0) revert PositionTokenIdNotSet();
-        if (positionToken.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
+        _checkPositionHolder();
         _;
     }
 
     /// @dev Restricts to the LiquidationAdapter contract set during initialization.
     modifier onlyLiquidationAdapter() {
-        if (msg.sender != liquidationAdapter) revert Unauthorized();
+        _checkLiquidationAdapter();
         _;
     }
 
@@ -297,7 +296,7 @@ contract InstitutionalLoanVault is BaseVault {
      *         - Lock: floor-checked (minimumCollateralRequired) + LT-checked.
      *         - Failed (Scenario A — raised < minCap): withdraw all deposited collateral.
      *         - Failed (Scenario B — institution default): withdraw deposited minus confiscated margin.
-     *         - Matured: capped at totalCollateralDeposited, unrestricted.
+     *         - Matured / Liquidated: capped at totalCollateralDeposited, unrestricted.
      * @param amount Amount of collateral tokens to withdraw.
      * @custom:error InsufficientCollateral if withdrawal would breach floor or exceed available amount.
      * @custom:event CollateralWithdrawn
@@ -307,7 +306,10 @@ contract InstitutionalLoanVault is BaseVault {
     ) external onlyPositionHolder nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
-        if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed) revert InvalidState();
+        if (
+            s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed
+                && s != VaultState.Liquidated
+        ) revert InvalidState();
 
         IERC20 collateralToken = IERC20(address(_config.collateralAsset));
 
@@ -407,6 +409,19 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // Internal — Modifier Helpers
+    // ──────────────────────────────────────────────────────────────────────
+
+    function _checkPositionHolder() internal view {
+        if (_config.positionTokenId == 0) revert PositionTokenIdNotSet();
+        if (positionToken.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
+    }
+
+    function _checkLiquidationAdapter() internal view {
+        if (msg.sender != liquidationAdapter) revert Unauthorized();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // Internal — State-Changing
     // ──────────────────────────────────────────────────────────────────────
 
@@ -473,6 +488,8 @@ contract InstitutionalLoanVault is BaseVault {
 
     /**
      * @dev Shared liquidation execution: close factor check, seize calculation, token transfers.
+     *      Fee-on-transfer collateral tokens are NOT supported: totalCollateralDeposited is decremented
+     *      by the oracle-computed seizeAmount, not the actual tokens transferred.
      * @param debt Current outstanding debt.
      * @param actualRepay Clamped repay amount.
      * @param liqType HF_BASED or DEADLINE — determines incentive multiplier.

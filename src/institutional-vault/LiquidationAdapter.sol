@@ -82,12 +82,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // ──────────────────────────────────────────────────────────────────────
 
     modifier onlyWhitelistedLiquidator() {
-        if (!isWhitelistedLiquidator[msg.sender]) revert NotWhitelistedLiquidator();
+        _checkWhitelistedLiquidator();
         _;
     }
 
     modifier onlyWhitelistedSettler() {
-        if (!isWhitelistedSettler[msg.sender]) revert NotWhitelistedSettler();
+        _checkWhitelistedSettler();
         _;
     }
 
@@ -245,6 +245,18 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         uint256 repayAmount
     ) external onlyWhitelistedSettler nonReentrant {
         _executeLiquidation(vault, repayAmount, true);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Modifier Helpers
+    // ──────────────────────────────────────────────────────────────────────
+
+    function _checkWhitelistedLiquidator() internal view {
+        if (!isWhitelistedLiquidator[msg.sender]) revert NotWhitelistedLiquidator();
+    }
+
+    function _checkWhitelistedSettler() internal view {
+        if (!isWhitelistedSettler[msg.sender]) revert NotWhitelistedSettler();
     }
 
     // ──────────────────────────────────────────────────────────────────────

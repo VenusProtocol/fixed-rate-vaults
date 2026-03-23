@@ -58,7 +58,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
         uint256 amount
     ) external;
 
-    /// @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured: unrestricted.
+    /// @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured/Liquidated: unrestricted.
     /// @param amount Amount of collateral tokens to withdraw.
     function withdrawCollateral(
         uint256 amount

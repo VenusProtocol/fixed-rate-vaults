@@ -78,7 +78,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // ──────────────────────────────────────────────────────────────────────
 
     modifier onlyController() {
-        if (msg.sender != vaultController) revert Unauthorized();
+        _checkController();
         _;
     }
 
@@ -344,14 +344,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
             _settleProtocolShare();
             return;
         }
-
-        // Lock -> Matured (early repayment — debt cleared and lock passed)
-        if (s == VaultState.Lock && _outstandingDebt() == 0 && currentTime >= lockEnd) {
-            _runtime.state = VaultState.Matured;
-            emit StateTransition(VaultState.Lock, VaultState.Matured, currentTime);
-            _settleProtocolShare();
-            return;
-        }
     }
 
     /**
@@ -441,6 +433,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // Internal — Modifier Helpers
+    // ──────────────────────────────────────────────────────────────────────
+
+    function _checkController() internal view {
+        if (msg.sender != vaultController) revert Unauthorized();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
 
@@ -491,13 +491,16 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
 
         IERC20(asset()).safeTransferFrom(payer, address(this), amountClamped);
 
-        emit Repaid(amountClamped, _outstandingDebt());
+        emit Repaid(amountClamped, debt - amountClamped);
         _checkAndAdvanceState();
     }
 
     /**
      * @dev One-time fund withdrawal. Transfers all raised supply assets to `recipient`.
      *      Subcontracts wrap this with their own access control.
+     *      Only callable during Lock — if lockEndTime passes before claiming, the state advances
+     *      to PendingSettlement and this function becomes inaccessible. The supply asset stays in the vault
+     *      and the institution still owes the interest portion (totalOwed - balance = interest).
      * @param recipient Address to receive the raised funds.
      * @custom:error InvalidState if vault is not in Lock state.
      * @custom:error AlreadyWithdrawn if funds already claimed.
