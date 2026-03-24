@@ -127,6 +127,15 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     }
 
     /**
+     * @notice Accepts pending ownership of the InstitutionPositionToken.
+     * @dev Required because PositionToken uses Ownable2Step. Call after transferOwnership.
+     */
+    function acceptPositionTokenOwnership() external {
+        _checkAccessAllowed("acceptPositionTokenOwnership()");
+        positionToken.acceptOwnership();
+    }
+
+    /**
      * @notice Deploys a new vault clone via deterministic CREATE2.
      * @param _vaultConfig Shared vault configuration (asset, rates, caps, timing).
      * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
@@ -475,6 +484,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) revert InvalidConfig();
         if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
         // Institutional config validation
+        if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
         if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
         if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA) revert InvalidConfig();
         // Risk config validation

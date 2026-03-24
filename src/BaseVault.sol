@@ -243,7 +243,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
 
     /**
      * @notice State-dependent total assets backing outstanding shares.
-     * @dev Before Lock: actual balance. Lock/PendingSettlement/SettlementDeadlineExceeded: totalRaised. Terminal: balance.
+     * @dev Fundraising through SettlementDeadlineExceeded: totalRaised. Terminal (Matured/Failed/Liquidated): balance.
      * @return Total assets in supply asset units.
      */
     function totalAssets() public view override returns (uint256) {
@@ -253,14 +253,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         // balance is zero (institution claimed funds and hasn't repaid yet),
         // so return totalRaised to preserve 1:1 share-to-asset parity for redeems.
         if (
-            s == VaultState.Lock || s == VaultState.PendingSettlement
+            s == VaultState.Fundraising || s == VaultState.InstitutionConfirmation
+                || s == VaultState.Lock || s == VaultState.PendingSettlement
                 || s == VaultState.SettlementDeadlineExceeded
         ) {
             return _runtime.totalRaised;
         }
 
-        // WaitingForMargin, MarginDeposited, Fundraising, InstitutionConfirmation,
-        // Matured, Failed, Liquidated — actual balance reflects reality.
+        // WaitingForMargin, MarginDeposited, Matured, Failed, Liquidated
+        // — actual balance reflects reality.
         return IERC20(asset()).balanceOf(address(this));
     }
 

@@ -23,6 +23,13 @@ interface IInstitutionPositionToken is IERC721 {
     ) external returns (uint256 tokenId);
 
     // ──────────────────────────────────────────────────────────────────────
+    // Ownership (VaultController only)
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @notice Accepts pending ownership transfer (Ownable2Step).
+    function acceptOwnership() external;
+
+    // ──────────────────────────────────────────────────────────────────────
     // Transfer Governance (VaultController only)
     // ──────────────────────────────────────────────────────────────────────
 
