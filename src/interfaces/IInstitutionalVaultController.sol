@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity 0.8.25;
 
-import { VaultConfig, RiskConfig, VaultStateInfo } from "./IInstitutionalVaultTypes.sol";
+import { VaultConfig } from "./IVaultTypes.sol";
+import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "./IInstitutionalVaultTypes.sol";
 import { IVaultController } from "./IVaultController.sol";
 
 /// @title IInstitutionalVaultController
@@ -12,11 +13,13 @@ interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Deploys a new vault clone. ACM-gated.
-    /// @param _config Vault configuration.
+    /// @param _config Shared vault configuration (asset, rates, caps, timing).
+    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
     /// @param _riskConfig Risk parameters.
     /// @return vault Deployed vault address.
     function createVault(
         VaultConfig calldata _config,
+        InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig
     ) external returns (address vault);
 

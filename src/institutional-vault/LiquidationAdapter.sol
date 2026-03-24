@@ -9,7 +9,8 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
 
-import { VaultConfig, RiskConfig } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig } from "../interfaces/IVaultTypes.sol";
+import { InstitutionalConfig, RiskConfig } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 import { IProtocolShareReserve } from "../interfaces/IProtocolShareReserve.sol";
@@ -273,8 +274,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
 
         IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
         VaultConfig memory cfg = v.config();
+        InstitutionalConfig memory instCfg = v.institutionalConfig();
         IERC20 supplyAsset = IERC20(address(cfg.supplyAsset));
-        IERC20 collateralAsset = IERC20(address(cfg.collateralAsset));
+        IERC20 collateralAsset = IERC20(address(instCfg.collateralAsset));
 
         supplyAsset.safeTransferFrom(msg.sender, address(this), repayAmount);
         supplyAsset.forceApprove(vault, repayAmount);

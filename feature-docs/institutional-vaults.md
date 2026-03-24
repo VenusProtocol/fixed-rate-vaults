@@ -96,6 +96,49 @@ On-chain collateral, fixed-rate institutional lending via ERC-4626 vaults deploy
 **Decision:** Position-holder gated functions (`depositCollateral`, `withdrawCollateral`, `claimRaisedFunds`) check `positionToken.ownerOf(positionTokenId)` — the current NFT owner — not the institution address stored at deployment. The modifier is named `onlyPositionHolder` to reflect this.
 **Why:** The institution address is used for deployment and vault association, but the PositionToken is the actual ownership credential. If the institution transfers the token, the new holder gains full control of position-gated operations. This enables institutional vault ownership to be delegated or transferred without redeployment.
 
+### 14. Struct Split — Logical Domain Grouping (BaseVault / Extension)
+
+**Decision:** Split the monolithic `VaultConfig` and `VaultRuntime` into shared base structs (`IVaultTypes.sol`) and vault-type-specific extension structs (`IInstitutionalVaultTypes.sol`, future `ICeffuVaultTypes.sol`). Fields are grouped by logical domain within each struct.
+**Why:** The original structs mixed shared and vault-type-specific fields. CeffuVault would carry 10 dead fields (5 config + 5 runtime) per clone. Splitting by domain makes each struct self-documenting and eliminates dead storage in future vault types.
+**Shared types (`IVaultTypes.sol`):**
+
+- `VaultState` enum — single enum for all vault types; unused states are skipped in transitions
+- `VaultConfig` — asset, rates (fixedAPY, reserveFactor), caps (minBorrowCap, maxBorrowCap, minSupplierDeposit), timing (openDuration, lockDuration, settlementWindow)
+- `VaultRuntime` — lifecycle (state, isActive), timing (openStartTime…settlementDeadline), accounting (totalRaised, totalOwed, settlementAmount), flags (fundsWithdrawn, protocolShareSettled)
+
+**Institutional extension (`IInstitutionalVaultTypes.sol`):**
+
+- `InstitutionalConfig` — asset (collateralAsset), collateral sizing (idealCollateralAmount, marginRate), position identity (institutionOperator, positionTokenId)
+- `InstitutionalRuntime` — collateral accounting (totalCollateralDeposited, minimumCollateralRequired, idealCollateralValuation), margin confiscation (confiscatedMarginRemaining, institutionDefaulted)
+- `RiskConfig`, `LiquidationType` — unchanged, institutional-only
+
+**Storage layout:**
+
+- `BaseVault`: `VaultConfig _config`, `VaultRuntime _runtime`, `address vaultController`
+- `InstitutionalLoanVault` (extends BaseVault): adds `InstitutionalConfig _instConfig`, `InstitutionalRuntime _instRuntime`, `RiskConfig _riskConfig`, plus `positionToken` and `liquidationAdapter`
+
+**Impact:** BaseVault logic is unchanged — every `_config.*` / `_runtime.*` reference already only touches base-eligible fields. InstitutionalLoanVault changes are mechanical renames (`_config.collateralAsset` → `_instConfig.collateralAsset`, etc.). View getters: BaseVault exposes `config()` / `runtime()` returning base structs; InstitutionalLoanVault adds `institutionalConfig()` / `institutionalRuntime()`.
+
+### 15. Future CeffuVault — Architecture Notes
+
+**Planned extension structs (`ICeffuVaultTypes.sol`):**
+
+- `CeffuConfig` — Ceffu integration (ceffuRequestId, fundRouter, gracePeriod)
+- `CeffuRuntime` — order lifecycle (orderFilled, etc.)
+
+**Storage layout:** `CeffuVault` inherits `_config` / `_runtime` from BaseVault, adds only `CeffuConfig _ceffuConfig` and `CeffuRuntime _ceffuRuntime`. Zero dead fields.
+
+**Lifecycle differences:**
+
+- Skips `WaitingForMargin` / `MarginDeposited` — starts at `Fundraising`
+- `_advanceFromOpen()` override: Fundraising → `InstitutionConfirmation` (PendingFill) if minCap met, else Failed
+- `confirmOrderFill()` — controller-gated, transitions InstitutionConfirmation → Lock, calls `_claimRaisedFunds(fundRouter)`
+- `receiveRepayment()` — FundRouter pushes repayment, wraps `_repay()`
+- No collateral, no liquidation, no risk config, no oracle
+- No `_afterWithdraw` override needed — empty default is correct
+
+**What it reuses from BaseVault (zero changes):** ERC-4626 deposit/mint/withdraw/redeem, fundraising clamping, `_checkAndAdvanceState()` (Lock→PendingSettlement→Matured/SDE), `_settleProtocolShare()`, `_computeTotalInterest()`, `_outstandingDebt()`, `_repay()`, `_claimRaisedFunds()`, `closeVault()`/`pause()`/`unpause()`.
+
 ## Gotchas
 
 - **OZ v4.9 ERC4626Upgradeable uses IERC20Upgradeable** — not IERC20. The vault wraps IERC20 from OZ non-upgradeable for SafeERC20 operations on config assets.

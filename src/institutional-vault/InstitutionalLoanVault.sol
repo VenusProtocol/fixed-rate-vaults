@@ -7,7 +7,13 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { BaseVault } from "../BaseVault.sol";
-import { VaultConfig, RiskConfig, VaultState, LiquidationType } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig, VaultState } from "../interfaces/IVaultTypes.sol";
+import {
+    InstitutionalConfig,
+    InstitutionalRuntime,
+    RiskConfig,
+    LiquidationType
+} from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 import { ILiquidationAdapter } from "../interfaces/ILiquidationAdapter.sol";
@@ -29,6 +35,12 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
     // Storage (extends BaseVault)
     // ──────────────────────────────────────────────────────────────────────
+
+    /// @notice Institutional-specific configuration — collateral, sizing, position identity.
+    InstitutionalConfig internal _instConfig;
+
+    /// @notice Institutional-specific runtime — collateral accounting, margin confiscation.
+    InstitutionalRuntime internal _instRuntime;
 
     /// @notice Risk parameters — LT/LI/latePenaltyRate mutable via controller.
     RiskConfig internal _riskConfig;
@@ -57,6 +69,7 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     error InsufficientCollateral();
+    error InsufficientMarginCollateral();
     error NotPositionHolder();
     error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
@@ -98,12 +111,14 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Initializes the vault clone. Called once by VaultController.
-    /// @param config_ Vault configuration.
+    /// @param config_ Shared vault configuration (asset, rates, caps, timing).
+    /// @param instConfig_ Institutional-specific configuration (collateral, sizing, position identity).
     /// @param riskConfig_ Risk parameters.
     /// @param positionToken_ InstitutionPositionToken contract reference.
     /// @param liquidationAdapter_ LiquidationAdapter contract address.
     function initialize(
         VaultConfig calldata config_,
+        InstitutionalConfig calldata instConfig_,
         RiskConfig calldata riskConfig_,
         IInstitutionPositionToken positionToken_,
         address liquidationAdapter_
@@ -113,6 +128,7 @@ contract InstitutionalLoanVault is BaseVault {
         );
 
         _config = config_;
+        _instConfig = instConfig_;
         _riskConfig = riskConfig_;
         positionToken = positionToken_;
         liquidationAdapter = liquidationAdapter_;
@@ -273,18 +289,18 @@ contract InstitutionalLoanVault is BaseVault {
             revert InvalidState();
         }
 
-        IERC20 collateralToken = IERC20(address(_config.collateralAsset));
+        IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
         uint256 balanceBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
         uint256 totalCollateral = collateralToken.balanceOf(address(this));
         uint256 actual = totalCollateral - balanceBefore;
 
-        _runtime.totalCollateralDeposited += actual;
+        _instRuntime.totalCollateralDeposited += actual;
         emit CollateralDeposited(actual, totalCollateral);
 
         if (s == VaultState.WaitingForMargin) {
-            uint256 marginAmount = (_config.idealCollateralAmount * _config.marginRate) / MANTISSA;
-            if (_runtime.totalCollateralDeposited < marginAmount) revert InsufficientCollateral();
+            uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA;
+            if (_instRuntime.totalCollateralDeposited < marginAmount) revert InsufficientCollateral();
 
             _runtime.state = VaultState.MarginDeposited;
             emit StateTransition(VaultState.WaitingForMargin, VaultState.MarginDeposited, block.timestamp);
@@ -306,32 +322,34 @@ contract InstitutionalLoanVault is BaseVault {
     ) external onlyPositionHolder nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
-        if (
-            s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed
-                && s != VaultState.Liquidated
-        ) revert InvalidState();
+        if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) {
+            revert InvalidState();
+        }
 
-        IERC20 collateralToken = IERC20(address(_config.collateralAsset));
+        IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
 
+        // Lock: withdrawal must preserve the minimum collateral floor and pass LT health check.
         if (s == VaultState.Lock) {
             uint256 collateralBalance = collateralToken.balanceOf(address(this));
-            if (amount > collateralBalance - _runtime.minimumCollateralRequired) revert InsufficientCollateral();
+            if (amount > collateralBalance - _instRuntime.minimumCollateralRequired) revert InsufficientCollateral();
 
-            // LT check — skip if no debt outstanding
             if (_outstandingDebt() > 0) {
                 (, uint256 shortfall) = _getHypotheticalVaultLiquidity(amount);
                 if (shortfall > 0) revert WithdrawalWouldBreachLT();
             }
         }
 
-        if (s == VaultState.Failed && _runtime.institutionDefaulted) {
-            // Scenario B: institution cannot touch the confiscated margin
-            uint256 available = _runtime.totalCollateralDeposited - _runtime.confiscatedMarginRemaining;
+        // Failed (Institution default): confiscated margin is reserved
+        // for lender compensation, institution can only withdraw the remainder.
+        if (s == VaultState.Failed && _instRuntime.institutionDefaulted) {
+            uint256 available = _instRuntime.totalCollateralDeposited - _instRuntime.confiscatedMarginRemaining;
             if (amount > available) revert InsufficientCollateral();
         }
 
-        if (amount > _runtime.totalCollateralDeposited) revert InsufficientCollateral();
-        _runtime.totalCollateralDeposited -= amount;
+        // Failed (insufficient raise), Matured, Liquidated: unrestricted withdrawal
+        // up to totalCollateralDeposited.
+        if (amount > _instRuntime.totalCollateralDeposited) revert InsufficientCollateral();
+        _instRuntime.totalCollateralDeposited -= amount;
 
         collateralToken.safeTransfer(msg.sender, amount);
         emit CollateralWithdrawn(amount);
@@ -374,10 +392,22 @@ contract InstitutionalLoanVault is BaseVault {
         return _getDebtValueUSD();
     }
 
+    /// @notice Returns the institutional-specific configuration.
+    /// @return Institutional config struct.
+    function institutionalConfig() external view returns (InstitutionalConfig memory) {
+        return _instConfig;
+    }
+
     /// @notice Returns the risk configuration.
     /// @return Risk parameters struct.
     function riskConfig() external view returns (RiskConfig memory) {
         return _riskConfig;
+    }
+
+    /// @notice Returns the institutional-specific runtime state.
+    /// @return Institutional runtime struct.
+    function institutionalRuntime() external view returns (InstitutionalRuntime memory) {
+        return _instRuntime;
     }
 
     /// @notice Returns current liquidity and shortfall for the vault.
@@ -413,8 +443,8 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     function _checkPositionHolder() internal view {
-        if (_config.positionTokenId == 0) revert PositionTokenIdNotSet();
-        if (positionToken.ownerOf(_config.positionTokenId) != msg.sender) revert NotPositionHolder();
+        if (_instConfig.positionTokenId == 0) revert PositionTokenIdNotSet();
+        if (positionToken.ownerOf(_instConfig.positionTokenId) != msg.sender) revert NotPositionHolder();
     }
 
     function _checkLiquidationAdapter() internal view {
@@ -432,31 +462,31 @@ contract InstitutionalLoanVault is BaseVault {
      *      2. Raised >= minCap AND collateral < idealCollateral → Failed (institution default, margin confiscated)
      *      3. Raised < minCap → Failed (no confiscation)
      */
-    function _advanceFromOpen() internal override {
+    function _advanceStateFromOpen() internal override {
         if (block.timestamp < _runtime.openEndTime) return;
 
         uint256 totalRaised = _runtime.totalRaised;
-        uint256 idealCollateral = _config.idealCollateralAmount;
+        uint256 idealCollateral = _instConfig.idealCollateralAmount;
 
-        if (totalRaised >= _config.minBorrowCap && _runtime.totalCollateralDeposited >= idealCollateral) {
+        if (totalRaised >= _config.minBorrowCap && _instRuntime.totalCollateralDeposited >= idealCollateral) {
             // Success: Lock
             _runtime.state = VaultState.Lock;
             _runtime.totalOwed = totalRaised + _computeTotalInterest();
-            _runtime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
-            _runtime.idealCollateralValuation = _getCollateralValueUSD();
+            _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
+            _instRuntime.idealCollateralValuation = _getCollateralValueUSD();
             emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
             emit VaultLocked(totalRaised, _runtime.lockEndTime);
         } else if (totalRaised >= _config.minBorrowCap) {
-            // Scenario B: Institution default — margin confiscated
-            uint256 marginAmount = (idealCollateral * _config.marginRate) / MANTISSA;
+            // Institution default — margin confiscated
+            uint256 marginAmount = (idealCollateral * _instConfig.marginRate) / MANTISSA;
             _runtime.state = VaultState.Failed;
-            _runtime.institutionDefaulted = true;
-            _runtime.confiscatedMarginRemaining = marginAmount;
+            _instRuntime.institutionDefaulted = true;
+            _instRuntime.confiscatedMarginRemaining = marginAmount;
             emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
             emit VaultFailed(totalRaised, _config.minBorrowCap);
             emit MarginConfiscated(marginAmount);
         } else {
-            // Scenario A: Insufficient fundraising — no confiscation
+            // Insufficient fundraising — no confiscation
             _runtime.state = VaultState.Failed;
             emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
             emit VaultFailed(totalRaised, _config.minBorrowCap);
@@ -469,19 +499,19 @@ contract InstitutionalLoanVault is BaseVault {
      * @param receiver Address that received the supply asset refund.
      * @param shares Number of shares that were redeemed (already burned at this point).
      */
-    function _afterWithdraw(
+    function _afterWithdrawHook(
         address receiver,
         uint256 shares
     ) internal override {
-        if (!_runtime.institutionDefaulted || _runtime.confiscatedMarginRemaining == 0) return;
+        if (!_instRuntime.institutionDefaulted || _instRuntime.confiscatedMarginRemaining == 0) return;
 
         // totalSupply() is post-burn; reconstruct pre-burn total for pro-rata calculation
         uint256 totalSharesBeforeBurn = totalSupply() + shares;
-        uint256 compensation = (_runtime.confiscatedMarginRemaining * shares) / totalSharesBeforeBurn;
+        uint256 compensation = (_instRuntime.confiscatedMarginRemaining * shares) / totalSharesBeforeBurn;
 
         if (compensation > 0) {
-            _runtime.confiscatedMarginRemaining -= compensation;
-            IERC20(address(_config.collateralAsset)).safeTransfer(receiver, compensation);
+            _instRuntime.confiscatedMarginRemaining -= compensation;
+            IERC20(address(_instConfig.collateralAsset)).safeTransfer(receiver, compensation);
             emit MarginCompensationClaimed(receiver, compensation);
         }
     }
@@ -502,17 +532,17 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 actualRepay,
         LiquidationType liqType
     ) internal returns (uint256 seizeAmount) {
-        uint256 cf = ILiquidationAdapter(liquidationAdapter).closeFactor();
-        uint256 maxRepay = (debt * cf) / MANTISSA;
+        uint256 closeFactor = ILiquidationAdapter(liquidationAdapter).closeFactor();
+        uint256 maxRepay = (debt * closeFactor) / MANTISSA;
         if (actualRepay > maxRepay) revert ExceedsCloseFactor();
 
         seizeAmount = _calculateSeizeAmount(actualRepay, liqType);
-        IERC20 collateralToken = IERC20(address(_config.collateralAsset));
+        IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
         uint256 collateralBalance = collateralToken.balanceOf(address(this));
         if (seizeAmount > collateralBalance) revert InsufficientCollateralForSeize(seizeAmount, collateralBalance);
 
         IERC20(address(_config.supplyAsset)).safeTransferFrom(msg.sender, address(this), actualRepay);
-        _runtime.totalCollateralDeposited -= seizeAmount;
+        _instRuntime.totalCollateralDeposited -= seizeAmount;
         collateralToken.safeTransfer(msg.sender, seizeAmount);
     }
 
@@ -522,7 +552,7 @@ contract InstitutionalLoanVault is BaseVault {
 
     /// @dev Internal collateral USD valuation. Caches oracle and collateral address.
     function _getCollateralValueUSD() internal view returns (uint256) {
-        address collateral = address(_config.collateralAsset);
+        address collateral = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(collateral);
         uint8 decimals = IERC20Metadata(collateral).decimals();
@@ -556,7 +586,7 @@ contract InstitutionalLoanVault is BaseVault {
 
         uint256 withdrawValueUSD;
         if (withdrawAmount > 0) {
-            uint256 collateralBalance = IERC20(address(_config.collateralAsset)).balanceOf(address(this));
+            uint256 collateralBalance = IERC20(address(_instConfig.collateralAsset)).balanceOf(address(this));
             if (collateralBalance > 0) {
                 withdrawValueUSD = (withdrawAmount * collateralUSD) / collateralBalance;
             }
@@ -586,7 +616,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 incentive = liqType == LiquidationType.HF_BASED ? rc.liquidationIncentive : rc.latePenaltyRate;
 
         address supplyAsset = address(_config.supplyAsset);
-        address collateralAsset = address(_config.collateralAsset);
+        address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
 
         uint256 supplyPrice = oracleRef.getPrice(supplyAsset);

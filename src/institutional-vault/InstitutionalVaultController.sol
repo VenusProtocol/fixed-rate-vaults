@@ -7,7 +7,8 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
 
-import { VaultConfig, RiskConfig, VaultState, VaultStateInfo } from "../interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig } from "../interfaces/IVaultTypes.sol";
+import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 
@@ -122,18 +123,20 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     }
 
     /// @notice Deploys a new vault clone via deterministic CREATE2.
-    /// @param _config Vault configuration.
+    /// @param _vaultConfig Shared vault configuration (asset, rates, caps, timing).
+    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
     /// @param _riskConfig Risk parameters.
     /// @return vault Deployed vault address.
     /// @custom:event VaultCreated
     function createVault(
-        VaultConfig calldata _config,
+        VaultConfig calldata _vaultConfig,
+        InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig
     ) external returns (address vault) {
-        _checkAccessAllowed("createVault(VaultConfig,RiskConfig)");
-        _validateVaultConfig(_config, _riskConfig);
+        _checkAccessAllowed("createVault(VaultConfig,InstitutionalConfig,RiskConfig)");
+        _validateVaultConfig(_vaultConfig, _instConfig, _riskConfig);
 
-        address institution = _config.institutionOperator;
+        address institution = _instConfig.institutionOperator;
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
 
         // Mint position token first (predict address for vault mapping)
@@ -143,9 +146,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         // Deploy clone
         vault = Clones.cloneDeterministic(vaultImplementation, salt);
 
-        // Assemble config with tokenId and initialize
-        VaultConfig memory assembledConfig = _assembleVaultConfig(_config, tokenId);
-        IInstitutionalLoanVault(vault).initialize(assembledConfig, _riskConfig, positionToken, liquidationAdapter);
+        // Assemble institutional config with tokenId and initialize
+        InstitutionalConfig memory assembledInstConfig = _withPositionTokenId(_instConfig, tokenId);
+        IInstitutionalLoanVault(vault)
+            .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, liquidationAdapter);
 
         // Register
         institutionNonce[institution]++;
@@ -207,7 +211,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
         IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
 
-        // TODO: bad-debt transfer flow TBD
         if (repayAmount > 0) {
             IERC20 supplyAsset = IERC20(address(v.config().supplyAsset));
             supplyAsset.safeTransferFrom(msg.sender, address(this), repayAmount);
@@ -373,7 +376,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
             infos[i] = VaultStateInfo({
                 vault: v,
                 state: vault.state(),
-                institutionOperator: vault.config().institutionOperator,
+                institutionOperator: vault.institutionalConfig().institutionOperator,
                 totalRaised: vault.runtime().totalRaised,
                 outstandingDebt: vault.outstandingDebt()
             });
@@ -394,39 +397,34 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     // Internal — Pure
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Assembles VaultConfig with the minted tokenId.
-    function _assembleVaultConfig(
-        VaultConfig calldata c,
+    /// @dev Assembles InstitutionalConfig with the minted tokenId.
+    function _withPositionTokenId(
+        InstitutionalConfig calldata c,
         uint256 tokenId
-    ) internal pure returns (VaultConfig memory) {
-        return VaultConfig({
-            supplyAsset: c.supplyAsset,
+    ) internal pure returns (InstitutionalConfig memory) {
+        return InstitutionalConfig({
             collateralAsset: c.collateralAsset,
             idealCollateralAmount: c.idealCollateralAmount,
             marginRate: c.marginRate,
-            fixedAPY: c.fixedAPY,
-            minBorrowCap: c.minBorrowCap,
-            maxBorrowCap: c.maxBorrowCap,
-            openDuration: c.openDuration,
-            lockDuration: c.lockDuration,
-            settlementWindow: c.settlementWindow,
-            reserveFactor: c.reserveFactor,
             institutionOperator: c.institutionOperator,
-            positionTokenId: tokenId,
-            minSupplierDeposit: c.minSupplierDeposit
+            positionTokenId: tokenId
         });
     }
 
-    /// @dev Validates vault and risk config at creation.
+    /// @dev Validates shared vault config, institutional config, and risk config at creation.
     function _validateVaultConfig(
         VaultConfig calldata c,
+        InstitutionalConfig calldata ic,
         RiskConfig calldata r
     ) internal pure {
-        if (c.idealCollateralAmount == 0) revert InvalidConfig();
-        if (c.marginRate == 0 || c.marginRate > MANTISSA) revert InvalidConfig();
+        // Shared config validation
         if (c.minBorrowCap > c.maxBorrowCap) revert InvalidConfig();
         if (c.maxBorrowCap == 0) revert InvalidConfig();
         if (c.openDuration == 0 || c.lockDuration == 0 || c.settlementWindow == 0) revert InvalidConfig();
+        // Institutional config validation
+        if (ic.idealCollateralAmount == 0) revert InvalidConfig();
+        if (ic.marginRate == 0 || ic.marginRate > MANTISSA) revert InvalidConfig();
+        // Risk config validation
         if (r.liquidationThreshold == 0 || r.liquidationThreshold > MANTISSA) revert InvalidConfig();
         if (r.liquidationIncentive <= 1e18 || r.liquidationIncentive > 1.3e18) revert InvalidConfig();
         if (r.latePenaltyRate <= 1e18) revert InvalidConfig();

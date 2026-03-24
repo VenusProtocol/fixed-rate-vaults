@@ -11,7 +11,7 @@ import { MathUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/math/
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { VaultConfig, VaultRuntime, VaultState } from "./interfaces/IInstitutionalVaultTypes.sol";
+import { VaultConfig, VaultRuntime, VaultState } from "./interfaces/IVaultTypes.sol";
 import { IVaultController } from "./interfaces/IVaultController.sol";
 import { IProtocolShareReserve } from "./interfaces/IProtocolShareReserve.sol";
 
@@ -78,7 +78,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // ──────────────────────────────────────────────────────────────────────
 
     modifier onlyController() {
-        _checkController();
+        if (msg.sender != vaultController) revert Unauthorized();
         _;
     }
 
@@ -207,6 +207,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     function totalAssets() public view override returns (uint256) {
         VaultState s = _runtime.state;
 
+        // During Lock the supply balance is zero (institution claimed funds),
+        // so return totalRaised to preserve 1:1 share-to-asset parity for redeems.
         if (s == VaultState.Lock) {
             return _runtime.totalRaised;
         }
@@ -300,15 +302,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     /**
      * @dev Handles all time-based and condition-based auto-transitions.
      *      Called at the start of every state-changing external function.
-     *      Subcontracts may override to extend with type-specific transitions.
      */
     function _checkAndAdvanceState() internal virtual {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
-        // Fundraising -> Lock or Failed (only when time expires)
+        // Fundraising -> next state (vault-type-specific logic)
         if (s == VaultState.Fundraising) {
-            _advanceFromOpen();
+            _advanceStateFromOpen();
             return;
         }
 
@@ -406,13 +407,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
 
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
-
-        _checkAndAdvanceState();
     }
 
     /**
      * @dev Internal withdraw — only allowed in terminal states (Matured, Failed, Liquidated).
-     *      No pause guard — supplier safety valve. Calls _afterWithdraw hook for subcontract extensions.
+     *      No pause guard — supplier safety valve. Calls _afterWithdrawHook hook for subcontract extensions.
      * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
      */
     function _withdraw(
@@ -429,15 +428,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         }
 
         super._withdraw(caller, receiver, owner, assets, shares);
-        _afterWithdraw(receiver, shares);
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Internal — Modifier Helpers
-    // ──────────────────────────────────────────────────────────────────────
-
-    function _checkController() internal view {
-        if (msg.sender != vaultController) revert Unauthorized();
+        _afterWithdrawHook(receiver, shares);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -525,15 +516,19 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Internal — Virtual Hooks
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Fundraising -> Lock or Failed transitions. Subcontracts override to define
-    ///      vault-type-specific post-fundraising behavior (e.g. Ceffu goes to InstitutionConfirmation).
-    function _advanceFromOpen() internal virtual { }
+    /// @dev Fundraising -> next state. Every vault type must override with its own transition logic.
+    ///      For institutional vaults, both institution (collateral) and suppliers (deposits) participate
+    ///      during Fundraising, so the transition evaluates both sides.
+    ///      For Ceffu vaults, only suppliers are involved during Fundraising.
+    function _advanceStateFromOpen() internal virtual { }
 
     /// @dev Hook called after each supplier withdrawal (shares already burned, supply asset transferred).
-    ///      Subcontracts override to add vault-type-specific logic (e.g. margin compensation).
+    ///      Subcontracts override to add vault-type-specific post-withdrawal logic.
+    ///      Default is a no-op — only vault types that hold collateral on-contract need to override
+    ///      (e.g. InstitutionalLoanVault distributes confiscated margin compensation here).
     /// @param receiver Address that received the supply asset.
     /// @param shares Number of shares that were redeemed (already burned).
-    function _afterWithdraw(
+    function _afterWithdrawHook(
         address receiver,
         uint256 shares
     ) internal virtual { }

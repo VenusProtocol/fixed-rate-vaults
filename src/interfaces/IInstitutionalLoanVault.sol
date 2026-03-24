@@ -4,7 +4,8 @@ pragma solidity 0.8.25;
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 
 import { IInstitutionPositionToken } from "./IInstitutionPositionToken.sol";
-import { VaultConfig, RiskConfig, VaultRuntime, VaultState, LiquidationType } from "./IInstitutionalVaultTypes.sol";
+import { VaultConfig, VaultRuntime, VaultState } from "./IVaultTypes.sol";
+import { InstitutionalConfig, InstitutionalRuntime, RiskConfig, LiquidationType } from "./IInstitutionalVaultTypes.sol";
 
 /// @title IInstitutionalLoanVault
 /// @notice Interface for the Institutional Fixed-Rate Loan Vault (ERC-4626 + collateral + borrowing + liquidation).
@@ -14,12 +15,14 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Initializes the vault clone. Called once by VaultController at deployment.
-    /// @param _config Vault configuration (assets, caps, durations, etc.).
+    /// @param _config Shared vault configuration (asset, rates, caps, timing).
+    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
     /// @param _riskConfig Risk parameters (LT, LI, latePenaltyRate).
     /// @param _positionToken InstitutionPositionToken contract reference.
     /// @param _liquidationAdapter LiquidationAdapter contract address.
     function initialize(
         VaultConfig calldata _config,
+        InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig,
         IInstitutionPositionToken _positionToken,
         address _liquidationAdapter
@@ -136,14 +139,20 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     /// @notice Current vault state.
     function state() external view returns (VaultState);
 
-    /// @notice Returns the vault configuration.
+    /// @notice Returns the shared vault configuration.
     function config() external view returns (VaultConfig memory);
+
+    /// @notice Returns the institutional-specific configuration.
+    function institutionalConfig() external view returns (InstitutionalConfig memory);
 
     /// @notice Returns the risk configuration.
     function riskConfig() external view returns (RiskConfig memory);
 
-    /// @notice Returns the runtime state.
+    /// @notice Returns the shared runtime state.
     function runtime() external view returns (VaultRuntime memory);
+
+    /// @notice Returns the institutional-specific runtime state.
+    function institutionalRuntime() external view returns (InstitutionalRuntime memory);
 
     /// @notice VaultController address.
     function vaultController() external view returns (address);
