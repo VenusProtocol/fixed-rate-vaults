@@ -62,6 +62,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     /// @notice Per-institution deploy counter (for CREATE2 salt).
     mapping(address => uint256) public institutionNonce;
 
+    /// @dev Reserved storage gap for future upgrades.
+    uint256[41] private __gap;
+
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
@@ -117,6 +120,13 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         address acm_
     ) external initializer {
         __AccessControlled_init(acm_);
+
+        if (vaultImplementation_ == address(0)) revert InvalidAddress();
+        if (liquidationAdapter_ == address(0)) revert InvalidAddress();
+        if (oracle_ == address(0)) revert InvalidAddress();
+        if (protocolShareReserve_ == address(0)) revert InvalidAddress();
+        if (comptroller_ == address(0)) revert InvalidAddress();
+        if (positionToken_ == address(0)) revert InvalidAddress();
 
         vaultImplementation = vaultImplementation_;
         liquidationAdapter = liquidationAdapter_;
@@ -483,13 +493,15 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
         if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) revert InvalidConfig();
         if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
+        if (vaultConfig.fixedAPY == 0) revert InvalidConfig();
+        if (vaultConfig.reserveFactor > MANTISSA) revert InvalidConfig();
         // Institutional config validation
         if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
         if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
         if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA) revert InvalidConfig();
         // Risk config validation
         if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA) revert InvalidConfig();
-        if (riskConfig.liquidationIncentive <= 1e18 || riskConfig.liquidationIncentive > 1.3e18) revert InvalidConfig();
+        if (riskConfig.liquidationIncentive <= 1e18) revert InvalidConfig();
         if (riskConfig.latePenaltyRate <= 1e18) revert InvalidConfig();
     }
 }

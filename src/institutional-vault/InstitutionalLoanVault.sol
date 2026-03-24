@@ -178,6 +178,7 @@ contract InstitutionalLoanVault is BaseVault {
     function repayBadDebt(
         uint256 repayAmount
     ) external onlyController nonReentrant {
+        _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
             revert InvalidState();
@@ -354,7 +355,7 @@ contract InstitutionalLoanVault is BaseVault {
 
         // Lock: withdrawal must preserve the minimum collateral floor and pass LT health check.
         if (s == VaultState.Lock) {
-            uint256 collateralBalance = collateralToken.balanceOf(address(this));
+            uint256 collateralBalance = _instRuntime.totalCollateralDeposited;
             if (collateralBalance <= _instRuntime.minimumCollateralRequired) revert InsufficientCollateral();
             if (amount > collateralBalance - _instRuntime.minimumCollateralRequired) revert InsufficientCollateral();
 
@@ -666,7 +667,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 supplyPrice = oracleRef.getPrice(supplyAsset);
         uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
 
-        if (collateralPrice == 0) revert InvalidOraclePrice();
+        if (supplyPrice == 0 || collateralPrice == 0) revert InvalidOraclePrice();
 
         uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA;
         uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA;

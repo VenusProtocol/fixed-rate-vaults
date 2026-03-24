@@ -59,6 +59,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     event ShortfallDetected(uint256 totalOwed, uint256 available);
     event ProtocolFeePaid(uint256 amount);
     event SurplusTransferred(uint256 amount);
+    event PSRNotificationFailed(address indexed psr, bytes reason);
     event RaisedFundsClaimed(uint256 amount);
     event Repaid(uint256 amount, uint256 remainingDebt);
 
@@ -425,10 +426,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         uint256 psrTotal = protocolFee + surplus;
         if (psrTotal > 0) {
             supplyToken.safeTransfer(psr, psrTotal);
-            IProtocolShareReserve(psr)
-                .updateAssetsState(
-                    comptrollerAddr, asset(), IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_PROTOCOL_FEE
-                );
+            try IProtocolShareReserve(psr).updateAssetsState(
+                comptrollerAddr, asset(), IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_PROTOCOL_FEE
+            ) {} catch (bytes memory reason) {
+                emit PSRNotificationFailed(psr, reason);
+            }
             if (protocolFee > 0) emit ProtocolFeePaid(protocolFee);
             if (surplus > 0) emit SurplusTransferred(surplus);
         }

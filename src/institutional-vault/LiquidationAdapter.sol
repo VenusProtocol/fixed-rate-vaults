@@ -58,6 +58,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice Accrued protocol share per collateral token. Swept to PSR via governance.
     mapping(address => uint256) public protocolShareAccrued;
 
+    /// @dev Reserved storage gap for future upgrades.
+    uint256[42] private __gap;
+
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
@@ -126,6 +129,10 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) external initializer {
         __AccessControlled_init(acm_);
         __ReentrancyGuard_init();
+
+        if (vaultController_ == address(0)) revert InvalidAddress();
+        if (protocolShareReserve_ == address(0)) revert InvalidAddress();
+        if (comptroller_ == address(0)) revert InvalidAddress();
 
         vaultController = vaultController_;
         protocolShareReserve = protocolShareReserve_;
