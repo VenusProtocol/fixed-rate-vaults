@@ -4,7 +4,6 @@ pragma solidity 0.8.25;
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { BaseVault } from "../BaseVault.sol";
 import { VaultConfig, VaultState } from "../interfaces/IVaultTypes.sol";
@@ -81,6 +80,8 @@ contract InstitutionalLoanVault is BaseVault {
     error ExceedsCloseFactor();
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
     error WithdrawalWouldBreachLT();
+    error InvalidOraclePrice();
+    error InvalidRiskParameter();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -207,6 +208,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationThreshold(
         uint256 newLT
     ) external onlyController {
+        if (newLT == 0 || newLT > MANTISSA) revert InvalidRiskParameter();
         _riskConfig.liquidationThreshold = newLT;
     }
 
@@ -217,6 +219,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationIncentive(
         uint256 newLI
     ) external onlyController {
+        if (newLI <= MANTISSA) revert InvalidRiskParameter();
         _riskConfig.liquidationIncentive = newLI;
     }
 
@@ -227,6 +230,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLatePenaltyRate(
         uint256 newRate
     ) external onlyController {
+        if (newRate <= MANTISSA) revert InvalidRiskParameter();
         _riskConfig.latePenaltyRate = newRate;
     }
 
@@ -351,6 +355,7 @@ contract InstitutionalLoanVault is BaseVault {
         // Lock: withdrawal must preserve the minimum collateral floor and pass LT health check.
         if (s == VaultState.Lock) {
             uint256 collateralBalance = collateralToken.balanceOf(address(this));
+            if (collateralBalance <= _instRuntime.minimumCollateralRequired) revert InsufficientCollateral();
             if (amount > collateralBalance - _instRuntime.minimumCollateralRequired) revert InsufficientCollateral();
 
             if (_outstandingDebt() > 0) {
@@ -551,6 +556,7 @@ contract InstitutionalLoanVault is BaseVault {
 
         if (compensation > 0) {
             _instRuntime.confiscatedMarginRemaining -= compensation;
+            _instRuntime.totalCollateralDeposited -= compensation;
             IERC20(address(_instConfig.collateralAsset)).safeTransfer(receiver, compensation);
             emit MarginCompensationClaimed(receiver, compensation);
         }
@@ -595,8 +601,7 @@ contract InstitutionalLoanVault is BaseVault {
         address collateral = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(collateral);
-        uint8 decimals = IERC20Metadata(collateral).decimals();
-        return (IERC20(collateral).balanceOf(address(this)) * price) / (10 ** decimals);
+        return (_instRuntime.totalCollateralDeposited * price) / MANTISSA;
     }
 
     /// @dev Internal debt USD valuation. Caches oracle and supply address.
@@ -606,8 +611,7 @@ contract InstitutionalLoanVault is BaseVault {
         address supply = address(_config.supplyAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
-        uint8 decimals = IERC20Metadata(supply).decimals();
-        return (debt * price) / (10 ** decimals);
+        return (debt * price) / MANTISSA;
     }
 
     /**
@@ -626,7 +630,7 @@ contract InstitutionalLoanVault is BaseVault {
 
         uint256 withdrawValueUSD;
         if (withdrawAmount > 0) {
-            uint256 collateralBalance = IERC20(address(_instConfig.collateralAsset)).balanceOf(address(this));
+            uint256 collateralBalance = _instRuntime.totalCollateralDeposited;
             if (collateralBalance > 0) {
                 withdrawValueUSD = (withdrawAmount * collateralUSD) / collateralBalance;
             }
@@ -662,13 +666,10 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 supplyPrice = oracleRef.getPrice(supplyAsset);
         uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
 
-        if (collateralPrice == 0) return 0;
+        if (collateralPrice == 0) revert InvalidOraclePrice();
 
-        uint8 supplyDecimals = IERC20Metadata(supplyAsset).decimals();
-        uint8 collateralDecimals = IERC20Metadata(collateralAsset).decimals();
-
-        uint256 repayValueUSD = (repayAmount * supplyPrice) / (10 ** supplyDecimals);
+        uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA;
         uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA;
-        seizeAmount = (seizeValueUSD * (10 ** collateralDecimals)) / collateralPrice;
+        seizeAmount = (seizeValueUSD * MANTISSA) / collateralPrice;
     }
 }

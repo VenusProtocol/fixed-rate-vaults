@@ -195,26 +195,72 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         _deposit(_msgSender(), receiver, assets, sharesClamped);
     }
 
+    /**
+     * @notice Withdraws supply assets in terminal states.
+     *         Advances state before checking max, enabling single-tx withdrawals
+     *         when the vault is ready to transition (e.g. PendingSettlement -> Matured).
+     * @param assets Amount of supply assets to withdraw.
+     * @param receiver Address to receive the assets.
+     * @param owner Share holder address.
+     * @return shares Shares burned.
+     */
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    ) public override returns (uint256 shares) {
+        _checkAndAdvanceState();
+        uint256 maxAssets = maxWithdraw(owner);
+        if (assets > maxAssets) revert ExceedsMaxCap();
+        shares = previewWithdraw(assets);
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
+    }
+
+    /**
+     * @notice Redeems shares for supply assets in terminal states.
+     *         Advances state before checking max, enabling single-tx redemptions
+     *         when the vault is ready to transition (e.g. PendingSettlement -> Matured).
+     * @param shares Shares to redeem.
+     * @param receiver Address to receive the assets.
+     * @param owner Share holder address.
+     * @return assets Supply assets returned.
+     */
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    ) public override returns (uint256 assets) {
+        _checkAndAdvanceState();
+        uint256 maxShares = maxRedeem(owner);
+        if (shares > maxShares) revert ExceedsMaxCap();
+        assets = previewRedeem(shares);
+        _withdraw(_msgSender(), receiver, owner, assets, shares);
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // Public — ERC-4626 Overrides (view)
     // ──────────────────────────────────────────────────────────────────────
 
     /**
      * @notice State-dependent total assets backing outstanding shares.
-     * @dev Before Lock: actual balance. During Lock: totalRaised. Post-lock/terminal: balance.
+     * @dev Before Lock: actual balance. Lock/PendingSettlement/SettlementDeadlineExceeded: totalRaised. Terminal: balance.
      * @return Total assets in supply asset units.
      */
     function totalAssets() public view override returns (uint256) {
         VaultState s = _runtime.state;
 
-        // During Lock the supply balance is zero (institution claimed funds),
+        // During Lock, PendingSettlement, and SettlementDeadlineExceeded the supply
+        // balance is zero (institution claimed funds and hasn't repaid yet),
         // so return totalRaised to preserve 1:1 share-to-asset parity for redeems.
-        if (s == VaultState.Lock) {
+        if (
+            s == VaultState.Lock || s == VaultState.PendingSettlement
+                || s == VaultState.SettlementDeadlineExceeded
+        ) {
             return _runtime.totalRaised;
         }
 
         // WaitingForMargin, MarginDeposited, Fundraising, InstitutionConfirmation,
-        // PendingSettlement, SettlementDeadlineExceeded, Matured, Failed, Liquidated
+        // Matured, Failed, Liquidated — actual balance reflects reality.
         return IERC20(asset()).balanceOf(address(this));
     }
 
@@ -421,12 +467,10 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         uint256 assets,
         uint256 shares
     ) internal virtual override nonReentrant {
-        _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) {
             revert InvalidState();
         }
-
         super._withdraw(caller, receiver, owner, assets, shares);
         _afterWithdrawHook(receiver, shares);
     }

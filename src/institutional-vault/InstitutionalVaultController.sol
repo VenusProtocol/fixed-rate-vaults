@@ -465,20 +465,21 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
 
     /// @dev Validates shared vault config, institutional config, and risk config at creation.
     function _validateVaultConfig(
-        VaultConfig calldata c,
-        InstitutionalConfig calldata ic,
-        RiskConfig calldata r
+        VaultConfig calldata vaultConfig,
+        InstitutionalConfig calldata instConfig,
+        RiskConfig calldata riskConfig
     ) internal pure {
         // Shared config validation
-        if (c.minBorrowCap > c.maxBorrowCap) revert InvalidConfig();
-        if (c.maxBorrowCap == 0) revert InvalidConfig();
-        if (c.openDuration == 0 || c.lockDuration == 0 || c.settlementWindow == 0) revert InvalidConfig();
+        if (vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) revert InvalidConfig();
+        if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
+        if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) revert InvalidConfig();
+        if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
         // Institutional config validation
-        if (ic.idealCollateralAmount == 0) revert InvalidConfig();
-        if (ic.marginRate == 0 || ic.marginRate > MANTISSA) revert InvalidConfig();
+        if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
+        if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA) revert InvalidConfig();
         // Risk config validation
-        if (r.liquidationThreshold == 0 || r.liquidationThreshold > MANTISSA) revert InvalidConfig();
-        if (r.liquidationIncentive <= 1e18 || r.liquidationIncentive > 1.3e18) revert InvalidConfig();
-        if (r.latePenaltyRate <= 1e18) revert InvalidConfig();
+        if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA) revert InvalidConfig();
+        if (riskConfig.liquidationIncentive <= 1e18 || riskConfig.liquidationIncentive > 1.3e18) revert InvalidConfig();
+        if (riskConfig.latePenaltyRate <= 1e18) revert InvalidConfig();
     }
 }
