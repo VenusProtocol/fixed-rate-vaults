@@ -71,6 +71,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     event CloseFactorUpdated(uint256 closeFactor);
     event LiquidationCollateralSplit(uint256 totalSeized, uint256 protocolAmount, uint256 callerAmount);
     event ProtocolShareSweptToReserve(address indexed collateral, uint256 amount);
+    event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
+    event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -82,6 +84,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     error InvalidShare();
     error InvalidCloseFactor();
     error InvalidAddress();
+    error ZeroRepayAmount();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -137,6 +140,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         vaultController = vaultController_;
         protocolShareReserve = protocolShareReserve_;
         comptroller = comptroller_;
+        if (protocolLiquidationShare_ > MANTISSA) revert InvalidShare();
         protocolLiquidationShare = protocolLiquidationShare_;
         if (closeFactor_ == 0 || closeFactor_ > MANTISSA) revert InvalidCloseFactor();
         closeFactor = closeFactor_;
@@ -212,6 +216,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) external {
         _checkAccessAllowed("setProtocolShareReserve(address)");
         if (psr == address(0)) revert InvalidAddress();
+        emit ProtocolShareReserveUpdated(protocolShareReserve, psr);
         protocolShareReserve = psr;
     }
 
@@ -225,6 +230,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) external {
         _checkAccessAllowed("setComptroller(address)");
         if (comptroller_ == address(0)) revert InvalidAddress();
+        emit ComptrollerUpdated(comptroller, comptroller_);
         comptroller = comptroller_;
     }
 
@@ -299,6 +305,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         uint256 repayAmount,
         bool isOverdue
     ) internal {
+        if (repayAmount == 0) revert ZeroRepayAmount();
         if (!IInstitutionalVaultController(vaultController).isRegistered(vault)) revert VaultNotRegistered();
 
         IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);

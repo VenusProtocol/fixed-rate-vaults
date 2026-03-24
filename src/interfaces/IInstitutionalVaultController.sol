@@ -75,18 +75,21 @@ interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Updates liquidation threshold on a vault.
+    /// @custom:event LiquidationThresholdUpdated
     function setLiquidationThreshold(
         address vault,
         uint256 newLT
     ) external;
 
     /// @notice Updates liquidation incentive on a vault.
+    /// @custom:event LiquidationIncentiveUpdated
     function setLiquidationIncentive(
         address vault,
         uint256 newLI
     ) external;
 
     /// @notice Updates late penalty rate on a vault.
+    /// @custom:event LatePenaltyRateUpdated
     function setLatePenaltyRate(
         address vault,
         uint256 newRate

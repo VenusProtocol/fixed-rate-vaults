@@ -64,6 +64,9 @@ contract InstitutionalLoanVault is BaseVault {
     event OverdueLiquidationExecuted(address indexed settler, uint256 repayAmount, uint256 collateralSeized);
     event MarginConfiscated(uint256 marginAmount);
     event MarginCompensationClaimed(address indexed receiver, uint256 amount);
+    event LiquidationThresholdUpdated(uint256 oldLT, uint256 newLT);
+    event LiquidationIncentiveUpdated(uint256 oldLI, uint256 newLI);
+    event LatePenaltyRateUpdated(uint256 oldRate, uint256 newRate);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -76,6 +79,7 @@ contract InstitutionalLoanVault is BaseVault {
     error InvalidStateForOverdueLiquidation();
     error NotBadDebt();
     error InsufficientRepayment();
+    error ExcessiveRepayAmount();
     error NotLiquidatable();
     error ExceedsCloseFactor();
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
@@ -187,6 +191,9 @@ contract InstitutionalLoanVault is BaseVault {
         if (_getCollateralValueUSD() >= _getDebtValueUSD()) revert NotBadDebt();
 
         IERC20 supplyToken = IERC20(address(_config.supplyAsset));
+        uint256 currentBalance = supplyToken.balanceOf(address(this));
+        uint256 required = currentBalance >= _runtime.totalOwed ? 0 : _runtime.totalOwed - currentBalance;
+        if (repayAmount > required) revert ExcessiveRepayAmount();
 
         if (repayAmount > 0) {
             supplyToken.safeTransferFrom(msg.sender, address(this), repayAmount);
@@ -210,6 +217,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 newLT
     ) external onlyController {
         if (newLT == 0 || newLT > MANTISSA) revert InvalidRiskParameter();
+        emit LiquidationThresholdUpdated(_riskConfig.liquidationThreshold, newLT);
         _riskConfig.liquidationThreshold = newLT;
     }
 
@@ -221,6 +229,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 newLI
     ) external onlyController {
         if (newLI <= MANTISSA) revert InvalidRiskParameter();
+        emit LiquidationIncentiveUpdated(_riskConfig.liquidationIncentive, newLI);
         _riskConfig.liquidationIncentive = newLI;
     }
 
@@ -232,6 +241,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 newRate
     ) external onlyController {
         if (newRate <= MANTISSA) revert InvalidRiskParameter();
+        emit LatePenaltyRateUpdated(_riskConfig.latePenaltyRate, newRate);
         _riskConfig.latePenaltyRate = newRate;
     }
 
@@ -602,6 +612,7 @@ contract InstitutionalLoanVault is BaseVault {
         address collateral = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(collateral);
+        if (price == 0) revert InvalidOraclePrice();
         return (_instRuntime.totalCollateralDeposited * price) / MANTISSA;
     }
 
@@ -612,6 +623,7 @@ contract InstitutionalLoanVault is BaseVault {
         address supply = address(_config.supplyAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
+        if (price == 0) revert InvalidOraclePrice();
         return (debt * price) / MANTISSA;
     }
 

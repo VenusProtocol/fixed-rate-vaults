@@ -118,6 +118,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @param repayAmount Amount to pull from controller.
      * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
      * @custom:error NotBadDebt If collateral value >= debt value.
+     * @custom:error ExcessiveRepayAmount If repayAmount exceeds the amount needed to reach totalRaised.
      * @custom:error InsufficientRepayment If total balance after repay < totalRaised.
      * @custom:event StateTransition Emitted for transition to Liquidated.
      * @custom:event VaultLiquidated Emitted with available balance.
@@ -164,16 +165,19 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /// @notice Updates liquidation threshold. Validated by controller before calling.
+    /// @custom:event LiquidationThresholdUpdated
     function setLiquidationThreshold(
         uint256 newLT
     ) external;
 
     /// @notice Updates liquidation incentive. Validated by controller before calling.
+    /// @custom:event LiquidationIncentiveUpdated
     function setLiquidationIncentive(
         uint256 newLI
     ) external;
 
     /// @notice Updates late penalty rate. Validated by controller before calling.
+    /// @custom:event LatePenaltyRateUpdated
     function setLatePenaltyRate(
         uint256 newRate
     ) external;

@@ -14,6 +14,7 @@ interface ILiquidationAdapter {
      * @param repayAmount Amount of supply asset to repay.
      * @custom:error NotWhitelistedLiquidator If caller is not whitelisted.
      * @custom:error VaultNotRegistered If vault is not in the controller registry.
+     * @custom:error ZeroRepayAmount If repayAmount is zero.
      * @custom:event LiquidationCollateralSplit Emitted with seized collateral split.
      */
     function liquidate(
@@ -27,6 +28,7 @@ interface ILiquidationAdapter {
      * @param repayAmount Amount of supply asset to repay.
      * @custom:error NotWhitelistedSettler If caller is not whitelisted.
      * @custom:error VaultNotRegistered If vault is not in the controller registry.
+     * @custom:error ZeroRepayAmount If repayAmount is zero.
      * @custom:event LiquidationCollateralSplit Emitted with seized collateral split.
      */
     function liquidateOverdueVault(
@@ -65,11 +67,13 @@ interface ILiquidationAdapter {
     ) external;
 
     /// @notice Update ProtocolShareReserve address.
+    /// @custom:event ProtocolShareReserveUpdated
     function setProtocolShareReserve(
         address _psr
     ) external;
 
     /// @notice Update comptroller address for PSR.
+    /// @custom:event ComptrollerUpdated
     function setComptroller(
         address _comptroller
     ) external;

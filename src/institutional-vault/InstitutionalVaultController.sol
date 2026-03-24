@@ -11,6 +11,7 @@ import { VaultConfig } from "../interfaces/IVaultTypes.sol";
 import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/IInstitutionalVaultTypes.sol";
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
+import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 
 /**
  * @title InstitutionalVaultController
@@ -18,7 +19,7 @@ import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionTok
  *         holds the Venus ACM reference, and proxies governance operations to vaults.
  * @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
  */
-contract InstitutionalVaultController is Initializable, AccessControlledV8 {
+contract InstitutionalVaultController is Initializable, AccessControlledV8, IInstitutionalVaultController {
     using SafeERC20 for IERC20;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -75,6 +76,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     event OracleUpdated(address indexed oldOracle, address indexed newOracle);
     event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
     event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
+    event LiquidationThresholdUpdated(address indexed vault, uint256 newLT);
+    event LiquidationIncentiveUpdated(address indexed vault, uint256 newLI);
+    event LatePenaltyRateUpdated(address indexed vault, uint256 newRate);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -304,6 +308,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA) revert InvalidLiquidationThreshold();
+        emit LiquidationThresholdUpdated(vault, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
 
@@ -321,6 +326,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= 1e18 || newLI > 1.3e18) revert InvalidLiquidationIncentive();
+        emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
 
@@ -338,6 +344,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= 1e18) revert InvalidLatePenaltyRate();
+        emit LatePenaltyRateUpdated(vault, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
 
@@ -489,7 +496,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         RiskConfig calldata riskConfig
     ) internal pure {
         // Shared config validation
-        if (vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) revert InvalidConfig();
+        if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
+        if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
+        if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) revert InvalidConfig();
         if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
         if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) revert InvalidConfig();
         if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
