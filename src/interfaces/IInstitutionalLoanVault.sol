@@ -14,12 +14,14 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Initialization
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Initializes the vault clone. Called once by VaultController at deployment.
-    /// @param _config Shared vault configuration (asset, rates, caps, timing).
-    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
-    /// @param _riskConfig Risk parameters (LT, LI, latePenaltyRate).
-    /// @param _positionToken InstitutionPositionToken contract reference.
-    /// @param _liquidationAdapter LiquidationAdapter contract address.
+    /**
+     * @notice Initializes the vault clone. Called once by VaultController at deployment.
+     * @param _config Shared vault configuration (asset, rates, caps, timing).
+     * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
+     * @param _riskConfig Risk parameters (LT, LI, latePenaltyRate).
+     * @param _positionToken InstitutionPositionToken contract reference.
+     * @param _liquidationAdapter LiquidationAdapter contract address.
+     */
     function initialize(
         VaultConfig calldata _config,
         InstitutionalConfig calldata _instConfig,
@@ -32,10 +34,19 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Lifecycle (Controller only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Transitions MarginDeposited -> Open. Sets timestamps and isActive.
+    /**
+     * @notice Transitions MarginDeposited -> Open. Sets timestamps and isActive.
+     * @custom:error InvalidState If vault is not in MarginDeposited state.
+     * @custom:event VaultOpened Emitted with the open end time.
+     * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
+     */
     function openVault() external;
 
-    /// @notice Sets isActive = false. Vault stays in Matured/Failed/Liquidated.
+    /**
+     * @notice Sets isActive = false. Vault stays in Matured/Failed/Liquidated.
+     * @custom:error InvalidState If vault is not in a terminal state.
+     * @custom:event VaultClosed Emitted with the terminal state.
+     */
     function closeVault() external;
 
     /// @notice Emergency pause — blocks deposits, collateral ops, and borrowing.
@@ -55,23 +66,45 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Institution Functions
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deposits collateral into the vault. WaitingForMargin, Fundraising, or Lock states.
-    /// @param amount Amount of collateral tokens to deposit.
+    /**
+     * @notice Deposits collateral into the vault. WaitingForMargin, Fundraising, or Lock states.
+     * @param amount Amount of collateral tokens to deposit.
+     * @custom:error InvalidState If vault is not in WaitingForMargin, Fundraising, or Lock.
+     * @custom:error InsufficientCollateral If deposit in WaitingForMargin does not meet margin threshold.
+     * @custom:event CollateralDeposited Emitted with actual deposited amount and total collateral.
+     * @custom:event StateTransition Emitted if WaitingForMargin -> MarginDeposited.
+     */
     function depositCollateral(
         uint256 amount
     ) external;
 
-    /// @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured/Liquidated: unrestricted.
-    /// @param amount Amount of collateral tokens to withdraw.
+    /**
+     * @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured/Liquidated: unrestricted.
+     * @param amount Amount of collateral tokens to withdraw.
+     * @custom:error InvalidState If vault is not in Lock, Matured, Failed, or Liquidated.
+     * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
+     * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
+     * @custom:event CollateralWithdrawn Emitted with withdrawal amount.
+     */
     function withdrawCollateral(
         uint256 amount
     ) external;
 
-    /// @notice One-time function. Transfers all raised supply assets to institution operator.
+    /**
+     * @notice One-time function. Transfers all raised supply assets to institution operator.
+     * @custom:error InvalidState If vault is not in Lock state.
+     * @custom:error AlreadyWithdrawn If funds already claimed.
+     * @custom:event RaisedFundsClaimed Emitted with claimed amount.
+     */
     function claimRaisedFunds() external;
 
-    /// @notice Repays outstanding debt. Not restricted to institution — anyone may repay.
-    /// @param amount Amount of supply asset to repay (clamped to outstandingDebt).
+    /**
+     * @notice Repays outstanding debt. Not restricted to institution — anyone may repay.
+     * @param amount Amount of supply asset to repay (clamped to outstandingDebt).
+     * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
+     * @custom:event Repaid Emitted with repay amount and remaining debt.
+     */
     function repay(
         uint256 amount
     ) external;
@@ -80,8 +113,15 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Bad-Debt Rescue (Controller only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Governance bad-debt rescue. Requires collateralUSD < debtUSD.
-    /// @param repayAmount Amount to pull from controller.
+    /**
+     * @notice Governance bad-debt rescue. Requires collateralUSD < debtUSD.
+     * @param repayAmount Amount to pull from controller.
+     * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NotBadDebt If collateral value >= debt value.
+     * @custom:error InsufficientRepayment If total balance after repay < totalRaised.
+     * @custom:event StateTransition Emitted for transition to Liquidated.
+     * @custom:event VaultLiquidated Emitted with available balance.
+     */
     function repayBadDebt(
         uint256 repayAmount
     ) external;
@@ -90,16 +130,31 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Liquidation (LiquidationAdapter only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice HF-based liquidation. Returns actual repay amount (clamped to debt).
-    /// @param repayAmount Amount of supply asset to repay.
-    /// @return actualRepay Actual amount repaid after clamping.
+    /**
+     * @notice HF-based liquidation. Returns actual repay amount (clamped to debt).
+     * @param repayAmount Amount of supply asset to repay.
+     * @return actualRepay Actual amount repaid after clamping.
+     * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
+     * @custom:error NotLiquidatable If vault has no LT shortfall.
+     * @custom:error ExceedsCloseFactor If repay exceeds close factor limit.
+     * @custom:error InsufficientCollateralForSeize If seize amount exceeds collateral balance.
+     * @custom:event LiquidationExecuted Emitted with liquidator, repay amount, and collateral seized.
+     */
     function liquidate(
         uint256 repayAmount
     ) external returns (uint256 actualRepay);
 
-    /// @notice Deadline-based liquidation for overdue vaults. Returns actual repay amount.
-    /// @param repayAmount Amount of supply asset to repay.
-    /// @return actualRepay Actual amount repaid after clamping.
+    /**
+     * @notice Deadline-based liquidation for overdue vaults. Returns actual repay amount.
+     * @param repayAmount Amount of supply asset to repay.
+     * @return actualRepay Actual amount repaid after clamping.
+     * @custom:error InvalidStateForOverdueLiquidation If not in SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
+     * @custom:error ExceedsCloseFactor If repay exceeds close factor limit.
+     * @custom:error InsufficientCollateralForSeize If seize amount exceeds collateral balance.
+     * @custom:event OverdueLiquidationExecuted Emitted with settler, repay amount, and collateral seized.
+     */
     function liquidateOverdueVault(
         uint256 repayAmount
     ) external returns (uint256 actualRepay);

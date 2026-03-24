@@ -8,17 +8,27 @@ interface ILiquidationAdapter {
     // Liquidation
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice HF-based liquidation. Whitelisted liquidator only.
-    /// @param vault Vault address to liquidate.
-    /// @param repayAmount Amount of supply asset to repay.
+    /**
+     * @notice HF-based liquidation. Whitelisted liquidator only.
+     * @param vault Vault address to liquidate.
+     * @param repayAmount Amount of supply asset to repay.
+     * @custom:error NotWhitelistedLiquidator If caller is not whitelisted.
+     * @custom:error VaultNotRegistered If vault is not in the controller registry.
+     * @custom:event LiquidationCollateralSplit Emitted with seized collateral split.
+     */
     function liquidate(
         address vault,
         uint256 repayAmount
     ) external;
 
-    /// @notice Deadline-based liquidation. Whitelisted settler only.
-    /// @param vault Vault address to liquidate.
-    /// @param repayAmount Amount of supply asset to repay.
+    /**
+     * @notice Deadline-based liquidation. Whitelisted settler only.
+     * @param vault Vault address to liquidate.
+     * @param repayAmount Amount of supply asset to repay.
+     * @custom:error NotWhitelistedSettler If caller is not whitelisted.
+     * @custom:error VaultNotRegistered If vault is not in the controller registry.
+     * @custom:event LiquidationCollateralSplit Emitted with seized collateral split.
+     */
     function liquidateOverdueVault(
         address vault,
         uint256 repayAmount

@@ -12,11 +12,15 @@ interface IInstitutionalVaultController is IVaultController {
     // Vault Deployment
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Deploys a new vault clone. ACM-gated.
-    /// @param _config Shared vault configuration (asset, rates, caps, timing).
-    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
-    /// @param _riskConfig Risk parameters.
-    /// @return vault Deployed vault address.
+    /**
+     * @notice Deploys a new vault clone. ACM-gated.
+     * @param _config Shared vault configuration (asset, rates, caps, timing).
+     * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
+     * @param _riskConfig Risk parameters.
+     * @return vault Deployed vault address.
+     * @custom:error InvalidConfig If any config validation fails.
+     * @custom:event VaultCreated Emitted with vault and institution addresses.
+     */
     function createVault(
         VaultConfig calldata _config,
         InstitutionalConfig calldata _instConfig,

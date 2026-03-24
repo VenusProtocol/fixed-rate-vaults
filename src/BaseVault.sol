@@ -516,18 +516,22 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     // Internal — Virtual Hooks
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Fundraising -> next state. Every vault type must override with its own transition logic.
-    ///      For institutional vaults, both institution (collateral) and suppliers (deposits) participate
-    ///      during Fundraising, so the transition evaluates both sides.
-    ///      For Ceffu vaults, only suppliers are involved during Fundraising.
+    /**
+     * @dev Fundraising -> next state. Every vault type must override with its own transition logic.
+     *      For institutional vaults, both institution (collateral) and suppliers (deposits) participate
+     *      during Fundraising, so the transition evaluates both sides.
+     *      For Ceffu vaults, only suppliers are involved during Fundraising.
+     */
     function _advanceStateFromOpen() internal virtual { }
 
-    /// @dev Hook called after each supplier withdrawal (shares already burned, supply asset transferred).
-    ///      Subcontracts override to add vault-type-specific post-withdrawal logic.
-    ///      Default is a no-op — only vault types that hold collateral on-contract need to override
-    ///      (e.g. InstitutionalLoanVault distributes confiscated margin compensation here).
-    /// @param receiver Address that received the supply asset.
-    /// @param shares Number of shares that were redeemed (already burned).
+    /**
+     * @dev Hook called after each supplier withdrawal (shares already burned, supply asset transferred).
+     *      Subcontracts override to add vault-type-specific post-withdrawal logic.
+     *      Default is a no-op — only vault types that hold collateral on-contract need to override
+     *      (e.g. InstitutionalLoanVault distributes confiscated margin compensation here).
+     * @param receiver Address that received the supply asset.
+     * @param shares Number of shares that were redeemed (already burned).
+     */
     function _afterWithdrawHook(
         address receiver,
         uint256 shares

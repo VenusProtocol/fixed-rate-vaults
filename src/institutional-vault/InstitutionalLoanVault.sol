@@ -19,16 +19,18 @@ import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVault
 import { ILiquidationAdapter } from "../interfaces/ILiquidationAdapter.sol";
 import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
-/// @title InstitutionalLoanVault
-/// @notice ERC-4626 vault for institutional fixed-rate lending with on-chain collateral,
-///         borrowing, and liquidation support. Deployed as EIP-1167 minimal proxy clones.
-/// @dev Inherits BaseVault for shared ERC-4626 mechanics, fundraising, interest, settlement,
-///      and core state machine. Adds: collateral deposit/withdraw, borrowing, risk checks,
-///      liquidation entry points, and pre-fundraising states (WaitingForMargin, MarginDeposited).
-///      No ACM — all governance calls are proxied through VaultController.
-///      Position-holder gated functions (collateral ops, claimRaisedFunds) are restricted to the
-///      current owner of the vault's PositionToken — not the original institution address. The
-///      institution can transfer vault ownership by transferring the token to another address.
+/**
+ * @title InstitutionalLoanVault
+ * @notice ERC-4626 vault for institutional fixed-rate lending with on-chain collateral,
+ *         borrowing, and liquidation support. Deployed as EIP-1167 minimal proxy clones.
+ * @dev Inherits BaseVault for shared ERC-4626 mechanics, fundraising, interest, settlement,
+ *      and core state machine. Adds: collateral deposit/withdraw, borrowing, risk checks,
+ *      liquidation entry points, and pre-fundraising states (WaitingForMargin, MarginDeposited).
+ *      No ACM — all governance calls are proxied through VaultController.
+ *      Position-holder gated functions (collateral ops, claimRaisedFunds) are restricted to the
+ *      current owner of the vault's PositionToken — not the original institution address. The
+ *      institution can transfer vault ownership by transferring the token to another address.
+ */
 contract InstitutionalLoanVault is BaseVault {
     using SafeERC20 for IERC20;
 
@@ -84,8 +86,10 @@ contract InstitutionalLoanVault is BaseVault {
     // Modifiers
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Restricts to the current owner of the vault's PositionToken. Ownership is transferable —
-    ///      if the institution transfers the token, the new holder gains access to position-holder gated functions.
+    /**
+     * @dev Restricts to the current owner of the vault's PositionToken. Ownership is transferable —
+     *      if the institution transfers the token, the new holder gains access to position-holder gated functions.
+     */
     modifier onlyPositionHolder() {
         _checkPositionHolder();
         _;
@@ -110,12 +114,14 @@ contract InstitutionalLoanVault is BaseVault {
     // External — Controller-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Initializes the vault clone. Called once by VaultController.
-    /// @param config_ Shared vault configuration (asset, rates, caps, timing).
-    /// @param instConfig_ Institutional-specific configuration (collateral, sizing, position identity).
-    /// @param riskConfig_ Risk parameters.
-    /// @param positionToken_ InstitutionPositionToken contract reference.
-    /// @param liquidationAdapter_ LiquidationAdapter contract address.
+    /**
+     * @notice Initializes the vault clone. Called once by VaultController.
+     * @param config_ Shared vault configuration (asset, rates, caps, timing).
+     * @param instConfig_ Institutional-specific configuration (collateral, sizing, position identity).
+     * @param riskConfig_ Risk parameters.
+     * @param positionToken_ InstitutionPositionToken contract reference.
+     * @param liquidationAdapter_ LiquidationAdapter contract address.
+     */
     function initialize(
         VaultConfig calldata config_,
         InstitutionalConfig calldata instConfig_,
@@ -135,8 +141,12 @@ contract InstitutionalLoanVault is BaseVault {
         _runtime.state = VaultState.WaitingForMargin;
     }
 
-    /// @notice Transitions MarginDeposited -> Open. Controller only.
-    /// @custom:event VaultOpened, StateTransition
+    /**
+     * @notice Transitions MarginDeposited -> Open. Controller only.
+     * @custom:error InvalidState If vault is not in MarginDeposited state.
+     * @custom:event VaultOpened Emitted with the open end time.
+     * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
+     */
     function openVault() external onlyController {
         if (_runtime.state != VaultState.MarginDeposited) revert InvalidState();
 
@@ -155,10 +165,15 @@ contract InstitutionalLoanVault is BaseVault {
         emit StateTransition(VaultState.MarginDeposited, VaultState.Fundraising, block.timestamp);
     }
 
-    /// @notice Governance bad-debt rescue. Pulls funds from controller and settles if sufficient.
-    /// @param repayAmount Amount of supply asset to pull from controller.
-    /// @custom:error NotBadDebt if collateral value >= debt value.
-    /// @custom:event StateTransition, VaultLiquidated if total balance covers totalRaised.
+    /**
+     * @notice Governance bad-debt rescue. Pulls funds from controller and settles if sufficient.
+     * @param repayAmount Amount of supply asset to pull from controller.
+     * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NotBadDebt If collateral value >= debt value.
+     * @custom:error InsufficientRepayment If total balance after repay < totalRaised.
+     * @custom:event StateTransition Emitted for transition to Liquidated.
+     * @custom:event VaultLiquidated Emitted with available balance.
+     */
     function repayBadDebt(
         uint256 repayAmount
     ) external onlyController nonReentrant {
@@ -185,24 +200,30 @@ contract InstitutionalLoanVault is BaseVault {
         _settleProtocolShare();
     }
 
-    /// @notice Updates liquidation threshold. Controller only.
-    /// @param newLT New liquidation threshold (mantissa).
+    /**
+     * @notice Updates liquidation threshold. Controller only.
+     * @param newLT New liquidation threshold (mantissa).
+     */
     function setLiquidationThreshold(
         uint256 newLT
     ) external onlyController {
         _riskConfig.liquidationThreshold = newLT;
     }
 
-    /// @notice Updates liquidation incentive. Controller only.
-    /// @param newLI New liquidation incentive (mantissa).
+    /**
+     * @notice Updates liquidation incentive. Controller only.
+     * @param newLI New liquidation incentive (mantissa).
+     */
     function setLiquidationIncentive(
         uint256 newLI
     ) external onlyController {
         _riskConfig.liquidationIncentive = newLI;
     }
 
-    /// @notice Updates late penalty rate. Controller only.
-    /// @param newRate New late penalty rate (mantissa).
+    /**
+     * @notice Updates late penalty rate. Controller only.
+     * @param newRate New late penalty rate (mantissa).
+     */
     function setLatePenaltyRate(
         uint256 newRate
     ) external onlyController {
@@ -217,11 +238,10 @@ contract InstitutionalLoanVault is BaseVault {
      * @notice HF-based liquidation. LiquidationAdapter only.
      * @param repayAmount Amount of supply asset to repay.
      * @return actualRepay Actual amount repaid after clamping to outstanding debt.
-     * @custom:error NoOutstandingDebt if there is no debt to repay.
-     * @custom:error NotLiquidatable if vault has no LT shortfall.
-     * @custom:error ExceedsCloseFactor if repay exceeds close factor limit.
-     * @custom:error InsufficientCollateralForSeize if seize amount exceeds collateral balance.
-     * @custom:event LiquidationExecuted
+     * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
+     * @custom:error NotLiquidatable If vault has no LT shortfall.
+     * @custom:event LiquidationExecuted Emitted with liquidator, repay amount, and collateral seized.
      */
     function liquidate(
         uint256 repayAmount
@@ -247,11 +267,9 @@ contract InstitutionalLoanVault is BaseVault {
      * @notice Deadline-based liquidation. LiquidationAdapter only.
      * @param repayAmount Amount of supply asset to repay.
      * @return actualRepay Actual amount repaid after clamping to outstanding debt.
-     * @custom:error NoOutstandingDebt if there is no debt to repay.
-     * @custom:error InvalidStateForOverdueLiquidation if not in SettlementDeadlineExceeded.
-     * @custom:error ExceedsCloseFactor if repay exceeds close factor limit.
-     * @custom:error InsufficientCollateralForSeize if seize amount exceeds collateral balance.
-     * @custom:event OverdueLiquidationExecuted
+     * @custom:error InvalidStateForOverdueLiquidation If not in SettlementDeadlineExceeded.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
+     * @custom:event OverdueLiquidationExecuted Emitted with settler, repay amount, and collateral seized.
      */
     function liquidateOverdueVault(
         uint256 repayAmount
@@ -314,8 +332,10 @@ contract InstitutionalLoanVault is BaseVault {
      *         - Failed (Scenario B — institution default): withdraw deposited minus confiscated margin.
      *         - Matured / Liquidated: capped at totalCollateralDeposited, unrestricted.
      * @param amount Amount of collateral tokens to withdraw.
-     * @custom:error InsufficientCollateral if withdrawal would breach floor or exceed available amount.
-     * @custom:event CollateralWithdrawn
+     * @custom:error InvalidState If vault is not in Lock, Matured, Failed, or Liquidated.
+     * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
+     * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
+     * @custom:event CollateralWithdrawn Emitted with withdrawal amount.
      */
     function withdrawCollateral(
         uint256 amount
@@ -355,9 +375,11 @@ contract InstitutionalLoanVault is BaseVault {
         emit CollateralWithdrawn(amount);
     }
 
-    /// @notice One-time fund withdrawal. Transfers all raised supply assets to institution.
-    /// @custom:error AlreadyWithdrawn if funds already claimed.
-    /// @custom:event RaisedFundsClaimed
+    /**
+     * @notice One-time fund withdrawal. Transfers all raised supply assets to institution.
+     * @custom:error AlreadyWithdrawn if funds already claimed.
+     * @custom:event RaisedFundsClaimed
+     */
     function claimRaisedFunds() external onlyPositionHolder nonReentrant whenNotPaused {
         _claimRaisedFunds(msg.sender);
     }
@@ -366,10 +388,12 @@ contract InstitutionalLoanVault is BaseVault {
     // External — Permissionless (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Repays outstanding debt. Anyone may call. Clamped to outstandingDebt.
-    /// @param amount Amount of supply asset to repay.
-    /// @custom:error NoOutstandingDebt if there is no debt to repay.
-    /// @custom:event Repaid
+    /**
+     * @notice Repays outstanding debt. Anyone may call. Clamped to outstandingDebt.
+     * @param amount Amount of supply asset to repay.
+     * @custom:error NoOutstandingDebt if there is no debt to repay.
+     * @custom:event Repaid
+     */
     function repay(
         uint256 amount
     ) external nonReentrant whenNotPaused {
@@ -380,57 +404,73 @@ contract InstitutionalLoanVault is BaseVault {
     // External — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Current collateral value in USD via oracle.
-    /// @return Collateral value in 18-decimal USD.
+    /**
+     * @notice Current collateral value in USD via oracle.
+     * @return Collateral value in 18-decimal USD.
+     */
     function getCollateralValueUSD() external view returns (uint256) {
         return _getCollateralValueUSD();
     }
 
-    /// @notice Current outstanding debt value in USD via oracle.
-    /// @return Debt value in 18-decimal USD.
+    /**
+     * @notice Current outstanding debt value in USD via oracle.
+     * @return Debt value in 18-decimal USD.
+     */
     function getDebtValueUSD() external view returns (uint256) {
         return _getDebtValueUSD();
     }
 
-    /// @notice Returns the institutional-specific configuration.
-    /// @return Institutional config struct.
+    /**
+     * @notice Returns the institutional-specific configuration.
+     * @return Institutional config struct.
+     */
     function institutionalConfig() external view returns (InstitutionalConfig memory) {
         return _instConfig;
     }
 
-    /// @notice Returns the risk configuration.
-    /// @return Risk parameters struct.
+    /**
+     * @notice Returns the risk configuration.
+     * @return Risk parameters struct.
+     */
     function riskConfig() external view returns (RiskConfig memory) {
         return _riskConfig;
     }
 
-    /// @notice Returns the institutional-specific runtime state.
-    /// @return Institutional runtime struct.
+    /**
+     * @notice Returns the institutional-specific runtime state.
+     * @return Institutional runtime struct.
+     */
     function institutionalRuntime() external view returns (InstitutionalRuntime memory) {
         return _instRuntime;
     }
 
-    /// @notice Returns current liquidity and shortfall for the vault.
-    /// @return liquidity Excess liquidity (0 if shortfall).
-    /// @return shortfall LT shortfall (0 if healthy).
+    /**
+     * @notice Returns current liquidity and shortfall for the vault.
+     * @return liquidity Excess liquidity (0 if shortfall).
+     * @return shortfall LT shortfall (0 if healthy).
+     */
     function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall) {
         return _getHypotheticalVaultLiquidity(0);
     }
 
-    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
-    /// @param withdrawAmount Simulated collateral withdrawal amount.
-    /// @return liquidity Excess liquidity (0 if shortfall).
-    /// @return shortfall LT shortfall (0 if healthy).
+    /**
+     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+     * @param withdrawAmount Simulated collateral withdrawal amount.
+     * @return liquidity Excess liquidity (0 if shortfall).
+     * @return shortfall LT shortfall (0 if healthy).
+     */
     function getHypotheticalVaultLiquidity(
         uint256 withdrawAmount
     ) external view returns (uint256 liquidity, uint256 shortfall) {
         return _getHypotheticalVaultLiquidity(withdrawAmount);
     }
 
-    /// @notice Preview seize amount for a given repay and liquidation type.
-    /// @param repayAmount Amount being repaid.
-    /// @param liquidationType HF_BASED or DEADLINE.
-    /// @return Collateral seize amount.
+    /**
+     * @notice Preview seize amount for a given repay and liquidation type.
+     * @param repayAmount Amount being repaid.
+     * @param liquidationType HF_BASED or DEADLINE.
+     * @return Collateral seize amount.
+     */
     function calculateSeizeAmount(
         uint256 repayAmount,
         LiquidationType liquidationType

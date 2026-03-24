@@ -15,10 +15,12 @@ import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.s
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
 import { IProtocolShareReserve } from "../interfaces/IProtocolShareReserve.sol";
 
-/// @title LiquidationAdapter
-/// @notice Manages whitelisted liquidators/settlers, routes liquidation calls to Institutional Vault vaults,
-///         receives seized collateral, and splits incentive between protocol and caller.
-/// @dev Deployed as a transparent proxy (upgradeable). Holds ACM for whitelist and config management.
+/**
+ * @title LiquidationAdapter
+ * @notice Manages whitelisted liquidators/settlers, routes liquidation calls to Institutional Vault vaults,
+ *         receives seized collateral, and splits incentive between protocol and caller.
+ * @dev Deployed as a transparent proxy (upgradeable). Holds ACM for whitelist and config management.
+ */
 contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
@@ -105,13 +107,15 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // External — ACM-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Initializes the adapter proxy.
-    /// @param vaultController_ VaultController address.
-    /// @param protocolShareReserve_ PSR address.
-    /// @param comptroller_ Comptroller address for PSR.
-    /// @param protocolLiquidationShare_ Initial protocol share of incentive (mantissa).
-    /// @param closeFactor_ Initial close factor (mantissa).
-    /// @param acm_ Venus AccessControlManager address.
+    /**
+     * @notice Initializes the adapter proxy.
+     * @param vaultController_ VaultController address.
+     * @param protocolShareReserve_ PSR address.
+     * @param comptroller_ Comptroller address for PSR.
+     * @param protocolLiquidationShare_ Initial protocol share of incentive (mantissa).
+     * @param closeFactor_ Initial close factor (mantissa).
+     * @param acm_ Venus AccessControlManager address.
+     */
     function initialize(
         address vaultController_,
         address protocolShareReserve_,
@@ -131,10 +135,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         closeFactor = closeFactor_;
     }
 
-    /// @notice Add or remove a liquidator from the whitelist.
-    /// @param liquidator Address to update.
-    /// @param approved Whether to approve or remove.
-    /// @custom:event LiquidatorWhitelistUpdated
+    /**
+     * @notice Add or remove a liquidator from the whitelist.
+     * @param liquidator Address to update.
+     * @param approved Whether to approve or remove.
+     * @custom:event LiquidatorWhitelistUpdated
+     */
     function setLiquidatorWhitelist(
         address liquidator,
         bool approved
@@ -144,10 +150,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         emit LiquidatorWhitelistUpdated(liquidator, approved);
     }
 
-    /// @notice Add or remove a settler from the whitelist.
-    /// @param settler Address to update.
-    /// @param approved Whether to approve or remove.
-    /// @custom:event SettlerWhitelistUpdated
+    /**
+     * @notice Add or remove a settler from the whitelist.
+     * @param settler Address to update.
+     * @param approved Whether to approve or remove.
+     * @custom:event SettlerWhitelistUpdated
+     */
     function setSettlerWhitelist(
         address settler,
         bool approved
@@ -157,10 +165,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         emit SettlerWhitelistUpdated(settler, approved);
     }
 
-    /// @notice Set the protocol share of the liquidation incentive (mantissa).
-    /// @param share New share (0 <= share <= 1e18).
-    /// @custom:error InvalidShare if share > 1e18.
-    /// @custom:event ProtocolLiquidationShareUpdated
+    /**
+     * @notice Set the protocol share of the liquidation incentive (mantissa).
+     * @param share New share (0 <= share <= 1e18).
+     * @custom:error InvalidShare if share > 1e18.
+     * @custom:event ProtocolLiquidationShareUpdated
+     */
     function setProtocolLiquidationShare(
         uint256 share
     ) external {
@@ -170,10 +180,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         emit ProtocolLiquidationShareUpdated(share);
     }
 
-    /// @notice Set max fraction of debt repayable per liquidation.
-    /// @param newCF New close factor (0 < newCF <= 1e18).
-    /// @custom:error InvalidCloseFactor if zero or > 1e18.
-    /// @custom:event CloseFactorUpdated
+    /**
+     * @notice Set max fraction of debt repayable per liquidation.
+     * @param newCF New close factor (0 < newCF <= 1e18).
+     * @custom:error InvalidCloseFactor if zero or > 1e18.
+     * @custom:event CloseFactorUpdated
+     */
     function setCloseFactor(
         uint256 newCF
     ) external {
@@ -183,9 +195,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         emit CloseFactorUpdated(newCF);
     }
 
-    /// @notice Update ProtocolShareReserve address.
-    /// @param psr New PSR address.
-    /// @custom:error InvalidAddress if zero address.
+    /**
+     * @notice Update ProtocolShareReserve address.
+     * @param psr New PSR address.
+     * @custom:error InvalidAddress if zero address.
+     */
     function setProtocolShareReserve(
         address psr
     ) external {
@@ -194,9 +208,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         protocolShareReserve = psr;
     }
 
-    /// @notice Update comptroller address for PSR.
-    /// @param comptroller_ New comptroller address.
-    /// @custom:error InvalidAddress if zero address.
+    /**
+     * @notice Update comptroller address for PSR.
+     * @param comptroller_ New comptroller address.
+     * @custom:error InvalidAddress if zero address.
+     */
     function setComptroller(
         address comptroller_
     ) external {
@@ -205,9 +221,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         comptroller = comptroller_;
     }
 
-    /// @notice Transfer accrued protocol share for the given collateral token to PSR.
-    /// @param collateral Collateral token address.
-    /// @custom:event ProtocolShareSweptToReserve
+    /**
+     * @notice Transfer accrued protocol share for the given collateral token to PSR.
+     * @param collateral Collateral token address.
+     * @custom:event ProtocolShareSweptToReserve
+     */
     function sweepProtocolShareToReserve(
         address collateral
     ) external {
@@ -228,9 +246,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // External — Whitelist-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice HF-based liquidation. Whitelisted liquidator only.
-    /// @param vault Vault address to liquidate.
-    /// @param repayAmount Amount of supply asset to repay.
+    /**
+     * @notice HF-based liquidation. Whitelisted liquidator only.
+     * @param vault Vault address to liquidate.
+     * @param repayAmount Amount of supply asset to repay.
+     */
     function liquidate(
         address vault,
         uint256 repayAmount
@@ -238,9 +258,11 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         _executeLiquidation(vault, repayAmount, false);
     }
 
-    /// @notice Deadline-based liquidation. Whitelisted settler only.
-    /// @param vault Vault address to liquidate.
-    /// @param repayAmount Amount of supply asset to repay.
+    /**
+     * @notice Deadline-based liquidation. Whitelisted settler only.
+     * @param vault Vault address to liquidate.
+     * @param repayAmount Amount of supply asset to repay.
+     */
     function liquidateOverdueVault(
         address vault,
         uint256 repayAmount
@@ -299,8 +321,10 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         _splitAndTransferCollateral(collateralAsset, seized, incentive, msg.sender);
     }
 
-    /// @dev Splits seized collateral between protocol and caller.
-    ///      Protocol takes protocolLiquidationShare of the incentive portion only.
+    /**
+     * @dev Splits seized collateral between protocol and caller.
+     *      Protocol takes protocolLiquidationShare of the incentive portion only.
+     */
     function _splitAndTransferCollateral(
         IERC20 collateral,
         uint256 totalSeized,

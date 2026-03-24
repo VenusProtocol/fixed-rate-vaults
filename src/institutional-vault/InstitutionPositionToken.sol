@@ -4,12 +4,14 @@ pragma solidity 0.8.25;
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-/// @title InstitutionPositionToken
-/// @notice Singleton ERC-721 representing institution positions in Institutional Vaults.
-///         One token per vault. Holder = institution operator. Governance-gated transfers.
-/// @dev Owner is VaultController (sole minter, transfer governance gateway).
-///      Not upgradeable — logic is minimal and immutable.
-///      Deployed with msg.sender as owner, then ownership transferred to VaultController.
+/**
+ * @title InstitutionPositionToken
+ * @notice Singleton ERC-721 representing institution positions in Institutional Vaults.
+ *         One token per vault. Holder = institution operator. Governance-gated transfers.
+ * @dev Owner is VaultController (sole minter, transfer governance gateway).
+ *      Not upgradeable — logic is minimal and immutable.
+ *      Deployed with msg.sender as owner, then ownership transferred to VaultController.
+ */
 contract InstitutionPositionToken is ERC721, Ownable2Step {
     // ──────────────────────────────────────────────────────────────────────
     // Storage
@@ -53,11 +55,13 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     // External — Owner-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Mints a new token to `to` for the given vault.
-    /// @param to The initial institution operator address.
-    /// @param vault The vault address this token represents.
-    /// @return tokenId The minted token ID.
-    /// @custom:event PositionTokenMinted
+    /**
+     * @notice Mints a new token to `to` for the given vault.
+     * @param to The initial institution operator address.
+     * @param vault The vault address this token represents.
+     * @return tokenId The minted token ID.
+     * @custom:event PositionTokenMinted
+     */
     function mint(
         address to,
         address vault
@@ -69,9 +73,11 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
         emit PositionTokenMinted(vault, tokenId, to);
     }
 
-    /// @notice Approves a token for transfer. One-time — resets after transfer.
-    /// @param tokenId The token ID to approve for transfer.
-    /// @custom:event PositionTransferApproved
+    /**
+     * @notice Approves a token for transfer. One-time — resets after transfer.
+     * @param tokenId The token ID to approve for transfer.
+     * @custom:event PositionTransferApproved
+     */
     function approveTransfer(
         uint256 tokenId
     ) external onlyOwner {
@@ -79,9 +85,11 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
         emit PositionTransferApproved(tokenId);
     }
 
-    /// @notice Revokes a previously granted transfer approval.
-    /// @param tokenId The token ID to revoke approval for.
-    /// @custom:event PositionTransferRevoked
+    /**
+     * @notice Revokes a previously granted transfer approval.
+     * @param tokenId The token ID to revoke approval for.
+     * @custom:event PositionTransferRevoked
+     */
     function revokeTransferApproval(
         uint256 tokenId
     ) external onlyOwner {
@@ -93,9 +101,11 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     // Internal — Transfer Control
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Overrides _beforeTokenTransfer to enforce governance-gated transfers.
-    ///      Minting (from == address(0)) is always allowed.
-    ///      Transfers require transferApproved[tokenId] == true (one-time use).
+    /**
+     * @dev Overrides _beforeTokenTransfer to enforce governance-gated transfers.
+     *      Minting (from == address(0)) is always allowed.
+     *      Transfers require transferApproved[tokenId] == true (one-time use).
+     */
     function _beforeTokenTransfer(
         address from,
         address to,

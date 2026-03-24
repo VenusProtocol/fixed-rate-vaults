@@ -12,10 +12,12 @@ import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/I
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 
-/// @title InstitutionalVaultController
-/// @notice Central orchestrator for the Institutional Vault system. Deploys vault clones, maintains the registry,
-///         holds the Venus ACM reference, and proxies governance operations to vaults.
-/// @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
+/**
+ * @title InstitutionalVaultController
+ * @notice Central orchestrator for the Institutional Vault system. Deploys vault clones, maintains the registry,
+ *         holds the Venus ACM reference, and proxies governance operations to vaults.
+ * @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
+ */
 contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     using SafeERC20 for IERC20;
 
@@ -95,14 +97,16 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     // External — ACM-Gated (State-Changing)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Initializes the controller proxy.
-    /// @param vaultImplementation_ InstitutionalLoanVault implementation for cloning.
-    /// @param liquidationAdapter_ LiquidationAdapter address.
-    /// @param oracle_ Venus ResilientOracle address.
-    /// @param protocolShareReserve_ PSR address.
-    /// @param comptroller_ Comptroller address for PSR.
-    /// @param positionToken_ InstitutionPositionToken address.
-    /// @param acm_ Venus AccessControlManager address.
+    /**
+     * @notice Initializes the controller proxy.
+     * @param vaultImplementation_ InstitutionalLoanVault implementation for cloning.
+     * @param liquidationAdapter_ LiquidationAdapter address.
+     * @param oracle_ Venus ResilientOracle address.
+     * @param protocolShareReserve_ PSR address.
+     * @param comptroller_ Comptroller address for PSR.
+     * @param positionToken_ InstitutionPositionToken address.
+     * @param acm_ Venus AccessControlManager address.
+     */
     function initialize(
         address vaultImplementation_,
         address liquidationAdapter_,
@@ -122,12 +126,14 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         positionToken = IInstitutionPositionToken(positionToken_);
     }
 
-    /// @notice Deploys a new vault clone via deterministic CREATE2.
-    /// @param _vaultConfig Shared vault configuration (asset, rates, caps, timing).
-    /// @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
-    /// @param _riskConfig Risk parameters.
-    /// @return vault Deployed vault address.
-    /// @custom:event VaultCreated
+    /**
+     * @notice Deploys a new vault clone via deterministic CREATE2.
+     * @param _vaultConfig Shared vault configuration (asset, rates, caps, timing).
+     * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
+     * @param _riskConfig Risk parameters.
+     * @return vault Deployed vault address.
+     * @custom:event VaultCreated
+     */
     function createVault(
         VaultConfig calldata _vaultConfig,
         InstitutionalConfig calldata _instConfig,
@@ -159,8 +165,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         emit VaultCreated(vault, institution);
     }
 
-    /// @notice Transitions MarginDeposited -> Open on a vault.
-    /// @param vault Vault address.
+    /**
+     * @notice Transitions MarginDeposited -> Open on a vault.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function openVault(
         address vault
     ) external {
@@ -169,8 +178,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).openVault();
     }
 
-    /// @notice Emergency pause on vault.
-    /// @param vault Vault address.
+    /**
+     * @notice Emergency pause on vault.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function pauseVault(
         address vault
     ) external {
@@ -179,8 +191,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).pause();
     }
 
-    /// @notice Unpause vault.
-    /// @param vault Vault address.
+    /**
+     * @notice Unpause vault.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function unpauseVault(
         address vault
     ) external {
@@ -189,8 +204,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).unpause();
     }
 
-    /// @notice Sets isActive = false on vault.
-    /// @param vault Vault address.
+    /**
+     * @notice Sets isActive = false on vault.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function closeVault(
         address vault
     ) external {
@@ -199,9 +217,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).closeVault();
     }
 
-    /// @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
-    /// @param vault Vault address.
-    /// @param repayAmount Amount to pull from caller.
+    /**
+     * @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
+     * @param vault Vault address.
+     * @param repayAmount Amount to pull from caller.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function repayBadDebt(
         address vault,
         uint256 repayAmount
@@ -222,8 +243,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         }
     }
 
-    /// @notice Approves transfer of the vault's position token.
-    /// @param vault Vault address.
+    /**
+     * @notice Approves transfer of the vault's position token.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function approvePositionTransfer(
         address vault
     ) external {
@@ -233,8 +257,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         positionToken.approveTransfer(tokenId);
     }
 
-    /// @notice Revokes a previously granted approval.
-    /// @param vault Vault address.
+    /**
+     * @notice Revokes a previously granted approval.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
     function revokePositionTransfer(
         address vault
     ) external {
@@ -244,10 +271,13 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         positionToken.revokeTransferApproval(tokenId);
     }
 
-    /// @notice Updates liquidation threshold on a vault.
-    /// @param vault Vault address.
-    /// @param newLT New liquidation threshold (mantissa).
-    /// @custom:error InvalidLiquidationThreshold if newLT == 0 or newLT > MANTISSA.
+    /**
+     * @notice Updates liquidation threshold on a vault.
+     * @param vault Vault address.
+     * @param newLT New liquidation threshold (mantissa).
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidLiquidationThreshold If newLT == 0 or newLT > MANTISSA.
+     */
     function setLiquidationThreshold(
         address vault,
         uint256 newLT
@@ -258,10 +288,13 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
 
-    /// @notice Updates liquidation incentive on a vault.
-    /// @param vault Vault address.
-    /// @param newLI New liquidation incentive (mantissa).
-    /// @custom:error InvalidLiquidationIncentive if outside (1e18, 1.3e18] range.
+    /**
+     * @notice Updates liquidation incentive on a vault.
+     * @param vault Vault address.
+     * @param newLI New liquidation incentive (mantissa).
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidLiquidationIncentive If outside (1e18, 1.3e18] range.
+     */
     function setLiquidationIncentive(
         address vault,
         uint256 newLI
@@ -272,10 +305,13 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
 
-    /// @notice Updates late penalty rate on a vault.
-    /// @param vault Vault address.
-    /// @param newRate New late penalty rate (mantissa).
-    /// @custom:error InvalidLatePenaltyRate if newRate <= 1e18.
+    /**
+     * @notice Updates late penalty rate on a vault.
+     * @param vault Vault address.
+     * @param newRate New late penalty rate (mantissa).
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidLatePenaltyRate If newRate <= 1e18.
+     */
     function setLatePenaltyRate(
         address vault,
         uint256 newRate
@@ -286,10 +322,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
 
-    /// @notice Update clone source. Only affects future vaults.
-    /// @param impl New implementation address.
-    /// @custom:error InvalidAddress if zero address.
-    /// @custom:event VaultImplementationUpdated
+    /**
+     * @notice Update clone source. Only affects future vaults.
+     * @param impl New implementation address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event VaultImplementationUpdated
+     */
     function setVaultImplementation(
         address impl
     ) external {
@@ -299,10 +337,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         vaultImplementation = impl;
     }
 
-    /// @notice Update LiquidationAdapter address.
-    /// @param adapter New adapter address.
-    /// @custom:error InvalidAddress if zero address.
-    /// @custom:event LiquidationAdapterUpdated
+    /**
+     * @notice Update LiquidationAdapter address.
+     * @param adapter New adapter address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event LiquidationAdapterUpdated
+     */
     function setLiquidationAdapter(
         address adapter
     ) external {
@@ -312,10 +352,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         liquidationAdapter = adapter;
     }
 
-    /// @notice Update ResilientOracle reference.
-    /// @param oracle_ New oracle address.
-    /// @custom:error InvalidAddress if zero address.
-    /// @custom:event OracleUpdated
+    /**
+     * @notice Update ResilientOracle reference.
+     * @param oracle_ New oracle address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event OracleUpdated
+     */
     function setOracle(
         address oracle_
     ) external {
@@ -325,10 +367,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         oracle = oracle_;
     }
 
-    /// @notice Update ProtocolShareReserve address.
-    /// @param psr New PSR address.
-    /// @custom:error InvalidAddress if zero address.
-    /// @custom:event ProtocolShareReserveUpdated
+    /**
+     * @notice Update ProtocolShareReserve address.
+     * @param psr New PSR address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event ProtocolShareReserveUpdated
+     */
     function setProtocolShareReserve(
         address psr
     ) external {
@@ -338,10 +382,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         protocolShareReserve = psr;
     }
 
-    /// @notice Update comptroller address for PSR.
-    /// @param comptroller_ New comptroller address.
-    /// @custom:error InvalidAddress if zero address.
-    /// @custom:event ComptrollerUpdated
+    /**
+     * @notice Update comptroller address for PSR.
+     * @param comptroller_ New comptroller address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event ComptrollerUpdated
+     */
     function setComptroller(
         address comptroller_
     ) external {
@@ -355,9 +401,11 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
     // External — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Predicts the next vault address for a given institution.
-    /// @param institution Institution operator address.
-    /// @return Predicted vault address.
+    /**
+     * @notice Predicts the next vault address for a given institution.
+     * @param institution Institution operator address.
+     * @return Predicted vault address.
+     */
     function predictVaultAddress(
         address institution
     ) external view returns (address) {
@@ -365,8 +413,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         return Clones.predictDeterministicAddress(vaultImplementation, salt);
     }
 
-    /// @notice Returns state summary for all registered vaults.
-    /// @return Array of VaultStateInfo structs.
+    /**
+     * @notice Returns state summary for all registered vaults.
+     * @return Array of VaultStateInfo structs.
+     */
     function getAggregatedVaultStates() external view returns (VaultStateInfo[] memory) {
         uint256 len = allVaults.length;
         VaultStateInfo[] memory infos = new VaultStateInfo[](len);
@@ -387,8 +437,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8 {
         return infos;
     }
 
-    /// @notice Returns total number of deployed vaults.
-    /// @return Number of vaults in registry.
+    /**
+     * @notice Returns total number of deployed vaults.
+     * @return Number of vaults in registry.
+     */
     function allVaultsLength() external view returns (uint256) {
         return allVaults.length;
     }
