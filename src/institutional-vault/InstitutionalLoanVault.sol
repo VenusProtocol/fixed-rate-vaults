@@ -260,7 +260,7 @@ contract InstitutionalLoanVault is BaseVault {
      */
     function liquidate(
         uint256 repayAmount
-    ) external onlyLiquidationAdapter nonReentrant returns (uint256 actualRepay) {
+    ) external onlyLiquidationAdapter nonReentrant whenNotCompletelyPaused returns (uint256 actualRepay) {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
@@ -288,7 +288,7 @@ contract InstitutionalLoanVault is BaseVault {
      */
     function liquidateOverdueVault(
         uint256 repayAmount
-    ) external onlyLiquidationAdapter nonReentrant returns (uint256 actualRepay) {
+    ) external onlyLiquidationAdapter nonReentrant whenNotCompletelyPaused returns (uint256 actualRepay) {
         _checkAndAdvanceState();
         if (_runtime.state != VaultState.SettlementDeadlineExceeded) revert InvalidStateForOverdueLiquidation();
 
@@ -412,7 +412,7 @@ contract InstitutionalLoanVault is BaseVault {
      */
     function repay(
         uint256 amount
-    ) external nonReentrant whenNotPaused {
+    ) external nonReentrant whenNotCompletelyPaused {
         _repay(msg.sender, amount);
     }
 

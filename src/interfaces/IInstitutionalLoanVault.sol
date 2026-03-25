@@ -4,7 +4,7 @@ pragma solidity 0.8.25;
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 
 import { IInstitutionPositionToken } from "./IInstitutionPositionToken.sol";
-import { VaultConfig, VaultRuntime, VaultState } from "./IVaultTypes.sol";
+import { VaultConfig, VaultRuntime, VaultState, PauseLevel } from "./IVaultTypes.sol";
 import { InstitutionalConfig, InstitutionalRuntime, RiskConfig, LiquidationType } from "./IInstitutionalVaultTypes.sol";
 
 /// @title IInstitutionalLoanVault
@@ -49,10 +49,23 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      */
     function closeVault() external;
 
-    /// @notice Emergency pause — blocks deposits, collateral ops, and borrowing.
-    function pause() external;
+    /**
+     * @notice Partial pause — blocks general operations (deposits, collateral, borrowing).
+     *         Repay and liquidation remain available.
+     * @custom:event PauseLevelSet
+     */
+    function partialPause() external;
 
-    /// @notice Unpause.
+    /**
+     * @notice Complete pause — blocks all operations including repay and liquidation.
+     * @custom:event PauseLevelSet
+     */
+    function completePause() external;
+
+    /**
+     * @notice Removes all pause restrictions.
+     * @custom:event PauseLevelSet
+     */
     function unpause() external;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -164,20 +177,29 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // Risk Parameter Setters (Controller only)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Updates liquidation threshold. Validated by controller before calling.
-    /// @custom:event LiquidationThresholdUpdated
+    /**
+     * @notice Updates liquidation threshold. Validated by controller before calling.
+     * @param newLT New liquidation threshold (mantissa).
+     * @custom:event LiquidationThresholdUpdated
+     */
     function setLiquidationThreshold(
         uint256 newLT
     ) external;
 
-    /// @notice Updates liquidation incentive. Validated by controller before calling.
-    /// @custom:event LiquidationIncentiveUpdated
+    /**
+     * @notice Updates liquidation incentive. Validated by controller before calling.
+     * @param newLI New liquidation incentive (mantissa).
+     * @custom:event LiquidationIncentiveUpdated
+     */
     function setLiquidationIncentive(
         uint256 newLI
     ) external;
 
-    /// @notice Updates late penalty rate. Validated by controller before calling.
-    /// @custom:event LatePenaltyRateUpdated
+    /**
+     * @notice Updates late penalty rate. Validated by controller before calling.
+     * @param newRate New late penalty rate (mantissa).
+     * @custom:event LatePenaltyRateUpdated
+     */
     function setLatePenaltyRate(
         uint256 newRate
     ) external;
@@ -216,6 +238,9 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     /// @notice VaultController address.
     function vaultController() external view returns (address);
 
+    /// @notice Current pause level (Unpaused, Partial, Complete).
+    function pauseLevel() external view returns (PauseLevel);
+
     // ──────────────────────────────────────────────────────────────────────
     // Vault Liquidity & Seize Previews
     // ──────────────────────────────────────────────────────────────────────
@@ -223,12 +248,22 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     /// @notice Returns current liquidity and shortfall for the vault.
     function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall);
 
-    /// @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+    /**
+     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+     * @param withdrawAmount Collateral amount to simulate withdrawing.
+     * @return liquidity Surplus collateral value above the liquidation threshold.
+     * @return shortfall Deficit collateral value below the liquidation threshold.
+     */
     function getHypotheticalVaultLiquidity(
         uint256 withdrawAmount
     ) external view returns (uint256 liquidity, uint256 shortfall);
 
-    /// @notice Preview seize amount for a given repay and liquidation type.
+    /**
+     * @notice Preview seize amount for a given repay and liquidation type.
+     * @param repayAmount Amount of supply asset being repaid.
+     * @param liquidationType HF-based or overdue liquidation type.
+     * @return Collateral amount to seize.
+     */
     function calculateSeizeAmount(
         uint256 repayAmount,
         LiquidationType liquidationType

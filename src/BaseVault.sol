@@ -6,12 +6,11 @@ import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ER
 import {
     ReentrancyGuardUpgradeable
 } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import { MathUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { VaultConfig, VaultRuntime, VaultState } from "./interfaces/IVaultTypes.sol";
+import { VaultConfig, VaultRuntime, VaultState, PauseLevel } from "./interfaces/IVaultTypes.sol";
 import { IVaultController } from "./interfaces/IVaultController.sol";
 import { IProtocolShareReserve } from "./interfaces/IProtocolShareReserve.sol";
 
@@ -23,7 +22,7 @@ import { IProtocolShareReserve } from "./interfaces/IProtocolShareReserve.sol";
  * @dev Subcontracts (InstitutionalLoanVault, future CeffuVault) inherit this and add type-specific logic.
  *      Deployed as EIP-1167 minimal proxy clones by the respective VaultController.
  */
-abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
+abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -47,6 +46,9 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     /// @notice VaultController address — set to msg.sender during initialize.
     address public vaultController;
 
+    /// @notice Current pause level (Unpaused, Partial, Complete).
+    PauseLevel public pauseLevel;
+
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     event PSRNotificationFailed(address indexed psr, bytes reason);
     event RaisedFundsClaimed(uint256 amount);
     event Repaid(uint256 amount, uint256 remainingDebt);
+    event PauseLevelSet(PauseLevel oldLevel, PauseLevel newLevel);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -73,13 +76,30 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
     error Unauthorized();
     error AlreadyWithdrawn();
     error NoOutstandingDebt();
+    error PartiallyPaused();
+    error CompletelyPaused();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
     // ──────────────────────────────────────────────────────────────────────
 
+    /// @dev Reverts if caller is not the VaultController.
     modifier onlyController() {
         if (msg.sender != vaultController) revert Unauthorized();
+        _;
+    }
+
+    /// @dev Reverts on any pause level (Partial or Complete). Used for general operations.
+    modifier whenNotPaused() {
+        PauseLevel level = pauseLevel;
+        if (level == PauseLevel.Partial) revert PartiallyPaused();
+        if (level == PauseLevel.Complete) revert CompletelyPaused();
+        _;
+    }
+
+    /// @dev Reverts only on Complete pause. Repay and liquidation remain available during Partial pause.
+    modifier whenNotCompletelyPaused() {
+        if (pauseLevel == PauseLevel.Complete) revert CompletelyPaused();
         _;
     }
 
@@ -99,14 +119,35 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         emit VaultClosed(s);
     }
 
-    /// @notice Emergency pause — blocks deposits and collateral operations.
-    function pause() external onlyController {
-        _pause();
+    /**
+     * @notice Partial pause — blocks general operations (deposits, collateral, borrowing).
+     *         Repay and liquidation remain available so positions can still be defended/resolved.
+     * @custom:event PauseLevelSet
+     */
+    function partialPause() external onlyController {
+        PauseLevel old = pauseLevel;
+        pauseLevel = PauseLevel.Partial;
+        emit PauseLevelSet(old, PauseLevel.Partial);
     }
 
-    /// @notice Removes emergency pause.
+    /**
+     * @notice Complete pause — blocks all operations including repay and liquidation.
+     * @custom:event PauseLevelSet
+     */
+    function completePause() external onlyController {
+        PauseLevel old = pauseLevel;
+        pauseLevel = PauseLevel.Complete;
+        emit PauseLevelSet(old, PauseLevel.Complete);
+    }
+
+    /**
+     * @notice Removes all pause restrictions.
+     * @custom:event PauseLevelSet
+     */
     function unpause() external onlyController {
-        _unpause();
+        PauseLevel old = pauseLevel;
+        pauseLevel = PauseLevel.Unpaused;
+        emit PauseLevelSet(old, PauseLevel.Unpaused);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -339,7 +380,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable, P
         __ERC4626_init(asset_);
         __ERC20_init(name_, symbol_);
         __ReentrancyGuard_init();
-        __Pausable_init();
         vaultController = vaultController_;
     }
 

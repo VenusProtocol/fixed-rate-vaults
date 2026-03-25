@@ -27,7 +27,11 @@ interface IInstitutionalVaultController is IVaultController {
         RiskConfig calldata _riskConfig
     ) external returns (address vault);
 
-    /// @notice Predicts the next vault address for a given institution.
+    /**
+     * @notice Predicts the next vault address for a given institution.
+     * @param institution Institution operator address.
+     * @return Predicted vault address.
+     */
     function predictVaultAddress(
         address institution
     ) external view returns (address);
@@ -36,22 +40,42 @@ interface IInstitutionalVaultController is IVaultController {
     // Governance-Proxied Vault Lifecycle
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Transitions MarginDeposited -> Open.
+    /**
+     * @notice Transitions MarginDeposited -> Open.
+     * @param vault Vault address to open.
+     */
     function openVault(
         address vault
     ) external;
 
-    /// @notice Sets isActive = false on vault.
+    /**
+     * @notice Sets isActive = false on vault.
+     * @param vault Vault address to close.
+     */
     function closeVault(
         address vault
     ) external;
 
-    /// @notice Emergency pause on vault.
-    function pauseVault(
+    /**
+     * @notice Partial pause — blocks general operations; repay and liquidation remain available.
+     * @param vault Vault address to pause.
+     */
+    function partialPauseVault(
         address vault
     ) external;
 
-    /// @notice Unpause vault.
+    /**
+     * @notice Complete pause — blocks all operations including repay and liquidation.
+     * @param vault Vault address to pause.
+     */
+    function completePauseVault(
+        address vault
+    ) external;
+
+    /**
+     * @notice Unpause vault — removes all pause restrictions.
+     * @param vault Vault address to unpause.
+     */
     function unpauseVault(
         address vault
     ) external;
@@ -60,12 +84,18 @@ interface IInstitutionalVaultController is IVaultController {
     // Institution Position Token Governance
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Approves transfer of the vault's position token.
+    /**
+     * @notice Approves transfer of the vault's position token.
+     * @param vault Vault address whose position token transfer is approved.
+     */
     function approvePositionTransfer(
         address vault
     ) external;
 
-    /// @notice Revokes a previously granted approval.
+    /**
+     * @notice Revokes a previously granted approval.
+     * @param vault Vault address whose position token transfer approval is revoked.
+     */
     function revokePositionTransfer(
         address vault
     ) external;
@@ -74,22 +104,34 @@ interface IInstitutionalVaultController is IVaultController {
     // Risk Parameter Setters
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Updates liquidation threshold on a vault.
-    /// @custom:event LiquidationThresholdUpdated
+    /**
+     * @notice Updates liquidation threshold on a vault.
+     * @param vault Vault address to update.
+     * @param newLT New liquidation threshold (mantissa).
+     * @custom:event LiquidationThresholdUpdated
+     */
     function setLiquidationThreshold(
         address vault,
         uint256 newLT
     ) external;
 
-    /// @notice Updates liquidation incentive on a vault.
-    /// @custom:event LiquidationIncentiveUpdated
+    /**
+     * @notice Updates liquidation incentive on a vault.
+     * @param vault Vault address to update.
+     * @param newLI New liquidation incentive (mantissa).
+     * @custom:event LiquidationIncentiveUpdated
+     */
     function setLiquidationIncentive(
         address vault,
         uint256 newLI
     ) external;
 
-    /// @notice Updates late penalty rate on a vault.
-    /// @custom:event LatePenaltyRateUpdated
+    /**
+     * @notice Updates late penalty rate on a vault.
+     * @param vault Vault address to update.
+     * @param newRate New late penalty rate (mantissa).
+     * @custom:event LatePenaltyRateUpdated
+     */
     function setLatePenaltyRate(
         address vault,
         uint256 newRate
@@ -99,7 +141,11 @@ interface IInstitutionalVaultController is IVaultController {
     // Bad-Debt Rescue
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
+    /**
+     * @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
+     * @param vault Vault address with bad debt.
+     * @param repayAmount Amount of supply asset to repay.
+     */
     function repayBadDebt(
         address vault,
         uint256 repayAmount
@@ -109,7 +155,11 @@ interface IInstitutionalVaultController is IVaultController {
     // Registry & Views
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Whether a vault is registered.
+    /**
+     * @notice Whether a vault is registered.
+     * @param vault Vault address to check.
+     * @return True if the vault is registered.
+     */
     function isRegistered(
         address vault
     ) external view returns (bool);
@@ -124,27 +174,42 @@ interface IInstitutionalVaultController is IVaultController {
     // Admin Setters
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Update clone source. Only affects future vaults.
+    /**
+     * @notice Update clone source. Only affects future vaults.
+     * @param impl New vault implementation address.
+     */
     function setVaultImplementation(
         address impl
     ) external;
 
-    /// @notice Update LiquidationAdapter address.
+    /**
+     * @notice Update LiquidationAdapter address.
+     * @param adapter New LiquidationAdapter address.
+     */
     function setLiquidationAdapter(
         address adapter
     ) external;
 
-    /// @notice Update ResilientOracle reference.
+    /**
+     * @notice Update ResilientOracle reference.
+     * @param _oracle New oracle address.
+     */
     function setOracle(
         address _oracle
     ) external;
 
-    /// @notice Update ProtocolShareReserve address.
+    /**
+     * @notice Update ProtocolShareReserve address.
+     * @param _psr New ProtocolShareReserve address.
+     */
     function setProtocolShareReserve(
         address _psr
     ) external;
 
-    /// @notice Update comptroller address for PSR.
+    /**
+     * @notice Update comptroller address for PSR.
+     * @param _comptroller New comptroller address.
+     */
     function setComptroller(
         address _comptroller
     ) external;

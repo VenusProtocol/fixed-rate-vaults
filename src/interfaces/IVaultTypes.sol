@@ -3,6 +3,13 @@ pragma solidity 0.8.25;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/// @notice Two-level pause system: Partial blocks general operations; Complete blocks everything.
+enum PauseLevel {
+    Unpaused, // 0 — normal operation
+    Partial, // 1 — blocks deposits, collateral ops, borrowing; repay + liquidation still work
+    Complete // 2 — blocks everything including repay and liquidation
+}
+
 /// @notice Shared vault lifecycle states — single enum for all vault types (Institutional Vault, Ceffu).
 ///         Each vault type uses a subset; unused states are simply skipped in transitions.
 enum VaultState {

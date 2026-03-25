@@ -202,20 +202,33 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
-     * @notice Emergency pause on vault.
+     * @notice Partial pause — blocks general operations; repay and liquidation remain available.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */
-    function pauseVault(
+    function partialPauseVault(
         address vault
     ) external {
-        _checkAccessAllowed("pauseVault(address)");
+        _checkAccessAllowed("partialPauseVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        IInstitutionalLoanVault(vault).pause();
+        IInstitutionalLoanVault(vault).partialPause();
     }
 
     /**
-     * @notice Unpause vault.
+     * @notice Complete pause — blocks all operations including repay and liquidation.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function completePauseVault(
+        address vault
+    ) external {
+        _checkAccessAllowed("completePauseVault(address)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        IInstitutionalLoanVault(vault).completePause();
+    }
+
+    /**
+     * @notice Unpause vault — removes all pause restrictions.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */
