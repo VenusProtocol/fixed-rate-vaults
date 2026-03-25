@@ -30,7 +30,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     uint256 public constant BPS = 10_000;
-    uint256 public constant MANTISSA = 1e18;
+    uint256 public constant MANTISSA_ONE = 1e18;
     uint256 public constant YEAR = 365 days;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -157,7 +157,9 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @custom:error NothingToSweep If the token balance is zero.
      * @custom:event TokensSwept
      */
-    function sweep(address token) external onlyController {
+    function sweep(
+        address token
+    ) external onlyController {
         uint256 amount = IERC20(token).balanceOf(address(this));
         if (amount == 0) revert NothingToSweep();
         address controller = vaultController;
@@ -220,12 +222,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @param assets Requested deposit amount in supply asset units.
      * @param receiver Address to receive minted shares.
      * @return shares Actual shares minted (may be less than requested if cap approached).
+     * @custom:error InvalidState If vault is not in Fundraising state.
      * @custom:error ExceedsMaxCap If clamped deposit amount is zero (vault at capacity).
      */
     function deposit(
         uint256 assets,
         address receiver
     ) public override returns (uint256 shares) {
+        _checkAndAdvanceState();
+        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
         uint256 maxAllowed = maxDeposit(receiver);
         uint256 assetsClamped = assets > maxAllowed ? maxAllowed : assets;
         if (assetsClamped == 0) revert ExceedsMaxCap();
@@ -239,12 +244,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @param shares Requested shares to mint.
      * @param receiver Address to receive minted shares.
      * @return assets Actual supply assets pulled (may be less than requested if cap approached).
+     * @custom:error InvalidState If vault is not in Fundraising state.
      * @custom:error ExceedsMaxCap If clamped share amount is zero (vault at capacity).
      */
     function mint(
         uint256 shares,
         address receiver
     ) public override returns (uint256 assets) {
+        _checkAndAdvanceState();
+        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
         uint256 maxSharesAllowed = maxMint(receiver);
         uint256 sharesClamped = shares > maxSharesAllowed ? maxSharesAllowed : shares;
         if (sharesClamped == 0) revert ExceedsMaxCap();
@@ -260,6 +268,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @param receiver Address to receive the assets.
      * @param owner Share holder address.
      * @return shares Shares burned.
+     * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+     * @custom:error ExceedsMaxCap If requested assets exceed the caller's withdrawable balance.
      */
     function withdraw(
         uint256 assets,
@@ -267,6 +277,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address owner
     ) public override returns (uint256 shares) {
         _checkAndAdvanceState();
+        VaultState s = _runtime.state;
+        if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
         uint256 maxAssets = maxWithdraw(owner);
         if (assets > maxAssets) revert ExceedsMaxCap();
         shares = previewWithdraw(assets);
@@ -281,6 +293,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @param receiver Address to receive the assets.
      * @param owner Share holder address.
      * @return assets Supply assets returned.
+     * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+     * @custom:error ExceedsMaxCap If requested shares exceed the caller's redeemable balance.
      */
     function redeem(
         uint256 shares,
@@ -288,6 +302,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address owner
     ) public override returns (uint256 assets) {
         _checkAndAdvanceState();
+        VaultState s = _runtime.state;
+        if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
         uint256 maxShares = maxRedeem(owner);
         if (shares > maxShares) revert ExceedsMaxCap();
         assets = previewRedeem(shares);
@@ -466,11 +482,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 surplus;
 
         if (available >= expectedRepayment) {
-            protocolFee = (totalInterest * _config.reserveFactor) / MANTISSA;
+            protocolFee = (totalInterest * _config.reserveFactor) / MANTISSA_ONE;
             surplus = available - expectedRepayment;
         } else if (available > _runtime.totalRaised) {
             uint256 interestAvailable = available - _runtime.totalRaised;
-            protocolFee = (interestAvailable * _config.reserveFactor) / MANTISSA;
+            protocolFee = (interestAvailable * _config.reserveFactor) / MANTISSA_ONE;
             emit ShortfallDetected(expectedRepayment, available);
         } else {
             protocolFee = 0;
@@ -480,9 +496,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 psrTotal = protocolFee + surplus;
         if (psrTotal > 0) {
             supplyToken.safeTransfer(psr, psrTotal);
-            try IProtocolShareReserve(psr).updateAssetsState(
-                comptrollerAddr, asset(), IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_PROTOCOL_FEE
-            ) {} catch (bytes memory reason) {
+            try IProtocolShareReserve(psr)
+                .updateAssetsState(
+                    comptrollerAddr, asset(), IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_PROTOCOL_FEE
+                ) { }
+            catch (bytes memory reason) {
                 emit PSRNotificationFailed(psr, reason);
             }
         }
@@ -492,8 +510,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     }
 
     /**
-     * @dev Internal deposit — state checks, min deposit, cap enforcement via clamping in public wrappers.
-     * @custom:error InvalidState If vault is not in Fundraising state.
+     * @dev Internal deposit — min deposit check, share minting, totalRaised update.
+     *      State check and advance are handled by the public wrappers (deposit/mint).
      * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured minimum.
      */
     function _deposit(
@@ -502,18 +520,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         uint256 shares
     ) internal override nonReentrant whenNotPaused {
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
         if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDepositAmount();
-
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
     }
 
     /**
-     * @dev Internal withdraw — only allowed in terminal states (Matured, Failed, Liquidated).
-     *      No pause guard — supplier safety valve. Calls _afterWithdrawHook hook for subcontract extensions.
-     * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
+     * @dev Internal withdraw — settlement amount accounting, asset transfer, after-hook.
+     *      State check and advance are handled by the public wrappers (withdraw/redeem).
+     *      No pause guard — supplier safety valve.
      */
     function _withdraw(
         address caller,
@@ -522,10 +537,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         uint256 shares
     ) internal virtual override nonReentrant {
-        VaultState s = _runtime.state;
-        if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) {
-            revert InvalidState();
-        }
         super._withdraw(caller, receiver, owner, assets, shares);
         _runtime.settlementAmount -= assets;
         _afterWithdrawHook(receiver, shares);
@@ -563,7 +574,10 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      * @param amount Requested amount; clamped to outstanding debt.
      * @custom:event Repaid
      */
-    function _receiveRepayment(address payer, uint256 amount) internal {
+    function _receiveRepayment(
+        address payer,
+        uint256 amount
+    ) internal {
         uint256 debt = _runtime.totalDebt;
         uint256 actual = amount > debt ? debt : amount;
         if (actual == 0) return;

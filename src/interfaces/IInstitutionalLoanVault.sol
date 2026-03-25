@@ -89,7 +89,9 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @custom:error NothingToSweep If the token balance is zero.
      * @custom:event TokensSwept
      */
-    function sweep(address token) external;
+    function sweep(
+        address token
+    ) external;
 
     // ──────────────────────────────────────────────────────────────────────
     // Permissionless State Advancement
@@ -154,7 +156,8 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @param repayAmount Amount to pull from caller.
      * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
      * @custom:error NotBadDebt If collateral value >= debt value.
-     * @custom:error InsufficientRepayment If outstanding debt after repay still exceeds total interest (principal not fully returned).
+     * @custom:error InsufficientRepayment If outstanding debt after repay still exceeds total interest (principal not
+     * fully returned).
      * @custom:event StateTransition Emitted for transition to Liquidated.
      * @custom:event VaultLiquidated Emitted with available balance.
      */

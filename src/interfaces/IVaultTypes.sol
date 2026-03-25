@@ -58,7 +58,8 @@ struct VaultRuntime {
     uint40 settlementDeadline;
     // ── Accounting ──
     uint256 totalRaised;
-    uint256 totalDebt; // live outstanding debt; set to interest at Lock, += totalRaised on claimRaisedFunds, -= repayments
+    uint256 totalDebt; // live outstanding debt; set to interest at Lock, += totalRaised on claimRaisedFunds, -=
+    // repayments
     uint256 settlementAmount;
     // ── Flags ──
     bool fundsWithdrawn; // true after claimRaisedFunds() — guards against double-claim

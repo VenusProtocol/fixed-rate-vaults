@@ -42,6 +42,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     // ──────────────────────────────────────────────────────────────────────
 
     error TransferNotApproved(uint256 tokenId);
+    error OwnershipCannotBeRenounced();
 
     // ──────────────────────────────────────────────────────────────────────
     // Constructor
@@ -49,6 +50,18 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
 
     constructor() ERC721("Venus Institution Position", "vINST") {
         nextTokenId = 1;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // External — Ownership
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Disabled — renouncing ownership would permanently brick minting and transfer governance.
+     * @custom:error OwnershipCannotBeRenounced Always reverts.
+     */
+    function renounceOwnership() public override {
+        revert OwnershipCannotBeRenounced();
     }
 
     // ──────────────────────────────────────────────────────────────────────

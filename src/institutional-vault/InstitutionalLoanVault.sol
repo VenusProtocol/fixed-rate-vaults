@@ -174,7 +174,8 @@ contract InstitutionalLoanVault is BaseVault {
      * @param repayAmount Amount of supply asset to pull from caller.
      * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
      * @custom:error NotBadDebt If collateral value >= debt value.
-     * @custom:error InsufficientRepayment If outstanding debt after repay still exceeds total interest (principal not fully returned).
+     * @custom:error InsufficientRepayment If outstanding debt after repay still exceeds total interest (principal not
+     * fully returned).
      * @custom:event StateTransition Emitted for transition to Liquidated.
      * @custom:event VaultLiquidated Emitted with available balance.
      */
@@ -208,7 +209,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationThreshold(
         uint256 newLT
     ) external onlyController {
-        if (newLT == 0 || newLT > MANTISSA) revert InvalidRiskParameter();
+        if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidRiskParameter();
         emit LiquidationThresholdUpdated(_riskConfig.liquidationThreshold, newLT);
         _riskConfig.liquidationThreshold = newLT;
     }
@@ -220,7 +221,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationIncentive(
         uint256 newLI
     ) external onlyController {
-        if (newLI <= MANTISSA) revert InvalidRiskParameter();
+        if (newLI <= MANTISSA_ONE) revert InvalidRiskParameter();
         emit LiquidationIncentiveUpdated(_riskConfig.liquidationIncentive, newLI);
         _riskConfig.liquidationIncentive = newLI;
     }
@@ -232,7 +233,7 @@ contract InstitutionalLoanVault is BaseVault {
     function setLatePenaltyRate(
         uint256 newRate
     ) external onlyController {
-        if (newRate <= MANTISSA) revert InvalidRiskParameter();
+        if (newRate <= MANTISSA_ONE) revert InvalidRiskParameter();
         emit LatePenaltyRateUpdated(_riskConfig.latePenaltyRate, newRate);
         _riskConfig.latePenaltyRate = newRate;
     }
@@ -326,7 +327,7 @@ contract InstitutionalLoanVault is BaseVault {
         emit CollateralDeposited(actual, _instRuntime.totalCollateralDeposited);
 
         if (s == VaultState.WaitingForMargin) {
-            uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA;
+            uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA_ONE;
             if (_instRuntime.totalCollateralDeposited < marginAmount) revert InsufficientCollateral();
 
             _runtime.state = VaultState.MarginDeposited;
@@ -520,7 +521,8 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 idealCollateral = _instConfig.idealCollateralAmount;
 
         if (totalRaised >= _config.minBorrowCap && _instRuntime.totalCollateralDeposited >= idealCollateral) {
-            // Success: Lock — initialise totalDebt to interest only; principal is added if/when claimRaisedFunds is called
+            // Success: Lock — initialise totalDebt to interest only; principal is added if/when claimRaisedFunds is
+            // called
             _runtime.state = VaultState.Lock;
             _runtime.totalDebt = _computeTotalInterest();
             _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
@@ -529,7 +531,7 @@ contract InstitutionalLoanVault is BaseVault {
             emit VaultLocked(totalRaised, _runtime.lockEndTime);
         } else if (totalRaised >= _config.minBorrowCap) {
             // Institution default — margin confiscated
-            uint256 marginAmount = (idealCollateral * _instConfig.marginRate) / MANTISSA;
+            uint256 marginAmount = (idealCollateral * _instConfig.marginRate) / MANTISSA_ONE;
             _runtime.state = VaultState.Failed;
             _runtime.settlementAmount = totalRaised;
             _instRuntime.institutionDefaulted = true;
@@ -587,7 +589,7 @@ contract InstitutionalLoanVault is BaseVault {
         LiquidationType liqType
     ) internal returns (uint256 seizeAmount) {
         uint256 closeFactor = ILiquidationAdapter(liquidationAdapter).closeFactor();
-        uint256 maxRepay = (debt * closeFactor) / MANTISSA;
+        uint256 maxRepay = (debt * closeFactor) / MANTISSA_ONE;
         if (actualRepay > maxRepay) revert ExceedsCloseFactor();
 
         seizeAmount = _calculateSeizeAmount(actualRepay, liqType);
@@ -610,7 +612,7 @@ contract InstitutionalLoanVault is BaseVault {
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(collateral);
         if (price == 0) revert InvalidOraclePrice();
-        return (_instRuntime.totalCollateralDeposited * price) / MANTISSA;
+        return (_instRuntime.totalCollateralDeposited * price) / MANTISSA_ONE;
     }
 
     /// @dev Internal debt USD valuation. Caches oracle and supply address.
@@ -621,7 +623,7 @@ contract InstitutionalLoanVault is BaseVault {
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
         if (price == 0) revert InvalidOraclePrice();
-        return (debt * price) / MANTISSA;
+        return (debt * price) / MANTISSA_ONE;
     }
 
     /**
@@ -647,7 +649,7 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         uint256 collateralAfterWithdraw = collateralUSD > withdrawValueUSD ? collateralUSD - withdrawValueUSD : 0;
-        uint256 ltCap = (collateralAfterWithdraw * lt) / MANTISSA;
+        uint256 ltCap = (collateralAfterWithdraw * lt) / MANTISSA_ONE;
 
         if (debtUSD <= ltCap) {
             return (ltCap - debtUSD, 0);
@@ -678,8 +680,8 @@ contract InstitutionalLoanVault is BaseVault {
 
         if (supplyPrice == 0 || collateralPrice == 0) revert InvalidOraclePrice();
 
-        uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA;
-        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA;
-        seizeAmount = (seizeValueUSD * MANTISSA) / collateralPrice;
+        uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA_ONE;
+        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA_ONE;
+        seizeAmount = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
     }
 }

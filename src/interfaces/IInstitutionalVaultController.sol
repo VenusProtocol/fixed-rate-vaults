@@ -118,7 +118,8 @@ interface IInstitutionalVaultController is IVaultController {
     /**
      * @notice Updates liquidation incentive on a vault.
      * @param vault Vault address to update.
-     * @param newLI New liquidation incentive (mantissa).
+     * @param newLI New liquidation incentive (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
+     * @custom:error InvalidLiquidationIncentive If newLI <= MANTISSA_ONE or newLI > MANTISSA_ONE_AND_HALF.
      * @custom:event LiquidationIncentiveUpdated
      */
     function setLiquidationIncentive(
@@ -129,7 +130,8 @@ interface IInstitutionalVaultController is IVaultController {
     /**
      * @notice Updates late penalty rate on a vault.
      * @param vault Vault address to update.
-     * @param newRate New late penalty rate (mantissa).
+     * @param newRate New late penalty rate (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
+     * @custom:error InvalidLatePenaltyRate If newRate <= MANTISSA_ONE or newRate > MANTISSA_ONE_AND_HALF.
      * @custom:event LatePenaltyRateUpdated
      */
     function setLatePenaltyRate(

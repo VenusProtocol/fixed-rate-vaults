@@ -28,7 +28,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // Constants
     // ──────────────────────────────────────────────────────────────────────
 
-    uint256 public constant MANTISSA = 1e18;
+    uint256 public constant MANTISSA_ONE = 1e18;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage
@@ -85,6 +85,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     error InvalidCloseFactor();
     error InvalidAddress();
     error ZeroRepayAmount();
+    error OwnershipCannotBeRenounced();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -140,9 +141,9 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         vaultController = vaultController_;
         protocolShareReserve = protocolShareReserve_;
         comptroller = comptroller_;
-        if (protocolLiquidationShare_ > MANTISSA) revert InvalidShare();
+        if (protocolLiquidationShare_ > MANTISSA_ONE) revert InvalidShare();
         protocolLiquidationShare = protocolLiquidationShare_;
-        if (closeFactor_ == 0 || closeFactor_ > MANTISSA) revert InvalidCloseFactor();
+        if (closeFactor_ == 0 || closeFactor_ > MANTISSA_ONE) revert InvalidCloseFactor();
         closeFactor = closeFactor_;
     }
 
@@ -186,7 +187,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         uint256 share
     ) external {
         _checkAccessAllowed("setProtocolLiquidationShare(uint256)");
-        if (share > MANTISSA) revert InvalidShare();
+        if (share > MANTISSA_ONE) revert InvalidShare();
         protocolLiquidationShare = share;
         emit ProtocolLiquidationShareUpdated(share);
     }
@@ -201,7 +202,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         uint256 newCF
     ) external {
         _checkAccessAllowed("setCloseFactor(uint256)");
-        if (newCF == 0 || newCF > MANTISSA) revert InvalidCloseFactor();
+        if (newCF == 0 || newCF > MANTISSA_ONE) revert InvalidCloseFactor();
         closeFactor = newCF;
         emit CloseFactorUpdated(newCF);
     }
@@ -347,12 +348,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) internal {
         if (totalSeized == 0) return;
 
-        // totalSeized = repayEquivalent × incentive / MANTISSA
-        uint256 repayEquivalent = (totalSeized * MANTISSA) / incentive;
+        // totalSeized = repayEquivalent × incentive / MANTISSA_ONE
+        uint256 repayEquivalent = (totalSeized * MANTISSA_ONE) / incentive;
         uint256 incentiveAmount = totalSeized - repayEquivalent;
 
         uint256 protocolShare = protocolLiquidationShare;
-        uint256 protocolAmount = (incentiveAmount * protocolShare) / MANTISSA;
+        uint256 protocolAmount = (incentiveAmount * protocolShare) / MANTISSA_ONE;
         uint256 callerAmount = totalSeized - protocolAmount;
 
         if (protocolAmount > 0) {
@@ -363,5 +364,13 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         }
 
         emit LiquidationCollateralSplit(totalSeized, protocolAmount, callerAmount);
+    }
+
+    /**
+     * @notice Disabled — renouncing ownership would permanently brick ACM-gated liquidation governance.
+     * @custom:error OwnershipCannotBeRenounced Always reverts.
+     */
+    function renounceOwnership() public override {
+        revert OwnershipCannotBeRenounced();
     }
 }

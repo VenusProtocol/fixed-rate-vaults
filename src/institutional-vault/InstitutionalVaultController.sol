@@ -26,7 +26,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     // Constants
     // ──────────────────────────────────────────────────────────────────────
 
-    uint256 public constant MANTISSA = 1e18;
+    uint256 public constant MANTISSA_ONE = 1e18;
+
+    /// @notice Maximum allowed multiplier for rate parameters (LI, LP). Caps bonus/penalty at 50% above mantissa.
+    uint256 public constant MANTISSA_ONE_AND_HALF = 1.5e18;
 
     // ──────────────────────────────────────────────────────────────────────
     // Storage — Core Configuration
@@ -90,6 +93,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     error InvalidLiquidationIncentive();
     error InvalidLatePenaltyRate();
     error InvalidAddress();
+    error OwnershipCannotBeRenounced();
 
     // ──────────────────────────────────────────────────────────────────────
     // Constructor
@@ -312,7 +316,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param vault Vault address.
      * @param newLT New liquidation threshold (mantissa).
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidLiquidationThreshold If newLT == 0 or newLT > MANTISSA.
+     * @custom:error InvalidLiquidationThreshold If newLT == 0 or newLT > MANTISSA_ONE.
      */
     function setLiquidationThreshold(
         address vault,
@@ -320,7 +324,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     ) external {
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (newLT == 0 || newLT > MANTISSA) revert InvalidLiquidationThreshold();
+        if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidLiquidationThreshold();
         emit LiquidationThresholdUpdated(vault, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
@@ -328,9 +332,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /**
      * @notice Updates liquidation incentive on a vault.
      * @param vault Vault address.
-     * @param newLI New liquidation incentive (mantissa).
+     * @param newLI New liquidation incentive (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidLiquidationIncentive If newLI <= 1e18.
+     * @custom:error InvalidLiquidationIncentive If newLI <= MANTISSA_ONE or newLI > MANTISSA_ONE_AND_HALF.
      */
     function setLiquidationIncentive(
         address vault,
@@ -338,7 +342,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     ) external {
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (newLI <= 1e18) revert InvalidLiquidationIncentive();
+        if (newLI <= MANTISSA_ONE || newLI > MANTISSA_ONE_AND_HALF) revert InvalidLiquidationIncentive();
         emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
@@ -346,9 +350,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /**
      * @notice Updates late penalty rate on a vault.
      * @param vault Vault address.
-     * @param newRate New late penalty rate (mantissa).
+     * @param newRate New late penalty rate (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidLatePenaltyRate If newRate <= 1e18.
+     * @custom:error InvalidLatePenaltyRate If newRate <= MANTISSA_ONE or newRate > MANTISSA_ONE_AND_HALF.
      */
     function setLatePenaltyRate(
         address vault,
@@ -356,7 +360,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     ) external {
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (newRate <= 1e18) revert InvalidLatePenaltyRate();
+        if (newRate <= MANTISSA_ONE || newRate > MANTISSA_ONE_AND_HALF) revert InvalidLatePenaltyRate();
         emit LatePenaltyRateUpdated(vault, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
@@ -511,19 +515,35 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         // Shared config validation
         if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
         if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
-        if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) revert InvalidConfig();
+        if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) {
+            revert InvalidConfig();
+        }
         if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
-        if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) revert InvalidConfig();
+        if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) {
+            revert InvalidConfig();
+        }
         if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
         if (vaultConfig.fixedAPY == 0) revert InvalidConfig();
-        if (vaultConfig.reserveFactor > MANTISSA) revert InvalidConfig();
+        if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
         // Institutional config validation
         if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
         if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
-        if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA) revert InvalidConfig();
+        if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA_ONE) revert InvalidConfig();
         // Risk config validation
-        if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA) revert InvalidConfig();
-        if (riskConfig.liquidationIncentive <= 1e18) revert InvalidConfig();
-        if (riskConfig.latePenaltyRate <= 1e18) revert InvalidConfig();
+        if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA_ONE) {
+            revert InvalidConfig();
+        }
+        if (riskConfig.liquidationIncentive <= MANTISSA_ONE || riskConfig.liquidationIncentive > MANTISSA_ONE_AND_HALF) revert InvalidConfig();
+        if (riskConfig.latePenaltyRate <= MANTISSA_ONE || riskConfig.latePenaltyRate > MANTISSA_ONE_AND_HALF) {
+            revert InvalidConfig();
+        }
+    }
+
+    /**
+     * @notice Disabled — renouncing ownership would permanently brick ACM-gated vault governance.
+     * @custom:error OwnershipCannotBeRenounced Always reverts.
+     */
+    function renounceOwnership() public override {
+        revert OwnershipCannotBeRenounced();
     }
 }
