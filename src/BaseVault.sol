@@ -57,14 +57,13 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     event VaultLocked(uint256 totalRaised, uint256 lockEndTime);
     event VaultFailed(uint256 totalRaised, uint256 minBorrowCap);
     event VaultClosed(VaultState state);
-    event SettlementConfirmed(uint256 settlementAmount, uint256 protocolFee);
+    event SettlementConfirmed(uint256 settlementAmount, uint256 protocolFee, uint256 surplus);
     event ShortfallDetected(uint256 totalOwed, uint256 available);
-    event ProtocolFeePaid(uint256 amount);
-    event SurplusTransferred(uint256 amount);
     event PSRNotificationFailed(address indexed psr, bytes reason);
     event RaisedFundsClaimed(uint256 amount);
     event Repaid(uint256 amount, uint256 remainingDebt);
     event PauseLevelSet(PauseLevel oldLevel, PauseLevel newLevel);
+    event TokensSwept(address indexed token, address indexed recipient, uint256 amount);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -76,6 +75,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     error Unauthorized();
     error AlreadyWithdrawn();
     error NoOutstandingDebt();
+    error ZeroRepayAmount();
+    error NothingToSweep();
     error PartiallyPaused();
     error CompletelyPaused();
 
@@ -150,6 +151,20 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         emit PauseLevelSet(old, PauseLevel.Unpaused);
     }
 
+    /**
+     * @notice Recovers any tokens stuck in the vault. Full balance is transferred.
+     * @param token Token address to sweep.
+     * @custom:error NothingToSweep If the token balance is zero.
+     * @custom:event TokensSwept
+     */
+    function sweep(address token) external onlyController {
+        uint256 amount = IERC20(token).balanceOf(address(this));
+        if (amount == 0) revert NothingToSweep();
+        address controller = vaultController;
+        IERC20(token).safeTransfer(controller, amount);
+        emit TokensSwept(token, controller, amount);
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // External — Permissionless (state-changing)
     // ──────────────────────────────────────────────────────────────────────
@@ -164,8 +179,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Total remaining debt (totalOwed minus current supply asset balance).
-     * @return Outstanding debt in supply asset units. Zero if fully repaid.
+     * @notice Total remaining debt. Decremented by repayments; zero when fully repaid.
+     * @return Outstanding debt in supply asset units.
      */
     function outstandingDebt() external view returns (uint256) {
         return _outstandingDebt();
@@ -285,26 +300,20 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
 
     /**
      * @notice State-dependent total assets backing outstanding shares.
-     * @dev Fundraising through SettlementDeadlineExceeded: totalRaised. Terminal (Matured/Failed/Liquidated): balance.
+     * @dev Matured/Failed/Liquidated: settlementAmount (decremented on each withdrawal). All other states: totalRaised.
      * @return Total assets in supply asset units.
      */
     function totalAssets() public view override returns (uint256) {
         VaultState s = _runtime.state;
 
-        // During Lock, PendingSettlement, and SettlementDeadlineExceeded the supply
-        // balance is zero (institution claimed funds and hasn't repaid yet),
-        // so return totalRaised to preserve 1:1 share-to-asset parity for redeems.
-        if (
-            s == VaultState.Fundraising || s == VaultState.InstitutionConfirmation
-                || s == VaultState.Lock || s == VaultState.PendingSettlement
-                || s == VaultState.SettlementDeadlineExceeded
-        ) {
-            return _runtime.totalRaised;
+        // Matured/Failed/Liquidated: use settlementAmount so the redeemable total tracks correctly
+        // as users withdraw (settlementAmount is decremented in _withdraw for these states).
+        if (s == VaultState.Matured || s == VaultState.Failed || s == VaultState.Liquidated) {
+            return _runtime.settlementAmount;
         }
 
-        // WaitingForMargin, MarginDeposited, Matured, Failed, Liquidated
-        // — actual balance reflects reality.
-        return IERC20(asset()).balanceOf(address(this));
+        // All other states: totalRaised (0 pre-fundraising, deposited amount otherwise).
+        return _runtime.totalRaised;
     }
 
     /**
@@ -436,8 +445,12 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     }
 
     /**
-     * @dev Transfers protocol fee and surplus to PSR. Sets settlementAmount.
-     *      Called once when transitioning to Matured. Guarded by protocolShareSettled flag.
+     * @dev Computes protocol fee and surplus, transfers both to PSR, and sets settlementAmount.
+     *      Called once on Matured/Liquidated transition; guarded by protocolShareSettled flag.
+     *      Three branches based on available balance vs expectedRepayment (principal + interest):
+     *        1. Full repayment (available >= expectedRepayment): fee on full interest + any surplus to PSR.
+     *        2. Partial repayment (available > totalRaised): fee on partial interest only; emits ShortfallDetected.
+     *        3. Principal shortfall (available <= totalRaised): no fee; emits ShortfallDetected.
      */
     function _settleProtocolShare() internal {
         if (_runtime.protocolShareSettled) return;
@@ -448,19 +461,20 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address psr = IVaultController(vaultController).protocolShareReserve();
         address comptrollerAddr = IVaultController(vaultController).comptroller();
         uint256 totalInterest = _computeTotalInterest();
+        uint256 expectedRepayment = _runtime.totalRaised + totalInterest;
         uint256 protocolFee;
         uint256 surplus;
 
-        if (available >= _runtime.totalOwed) {
+        if (available >= expectedRepayment) {
             protocolFee = (totalInterest * _config.reserveFactor) / MANTISSA;
-            surplus = available - _runtime.totalOwed;
+            surplus = available - expectedRepayment;
         } else if (available > _runtime.totalRaised) {
             uint256 interestAvailable = available - _runtime.totalRaised;
             protocolFee = (interestAvailable * _config.reserveFactor) / MANTISSA;
-            emit ShortfallDetected(_runtime.totalOwed, available);
+            emit ShortfallDetected(expectedRepayment, available);
         } else {
             protocolFee = 0;
-            emit ShortfallDetected(_runtime.totalOwed, available);
+            emit ShortfallDetected(expectedRepayment, available);
         }
 
         uint256 psrTotal = protocolFee + surplus;
@@ -471,12 +485,10 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
             ) {} catch (bytes memory reason) {
                 emit PSRNotificationFailed(psr, reason);
             }
-            if (protocolFee > 0) emit ProtocolFeePaid(protocolFee);
-            if (surplus > 0) emit SurplusTransferred(surplus);
         }
 
         _runtime.settlementAmount = available - psrTotal;
-        emit SettlementConfirmed(_runtime.settlementAmount, protocolFee);
+        emit SettlementConfirmed(_runtime.settlementAmount, protocolFee, surplus);
     }
 
     /**
@@ -515,6 +527,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
             revert InvalidState();
         }
         super._withdraw(caller, receiver, owner, assets, shares);
+        _runtime.settlementAmount -= assets;
         _afterWithdrawHook(receiver, shares);
     }
 
@@ -531,19 +544,33 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     }
 
     /**
-     * @dev Returns the current outstanding debt (totalOwed minus supply asset balance).
-     *      Repayment mechanism differs per vault type, but debt check is universal.
+     * @dev Returns the current outstanding debt.
+     *      Initialised to interest at Lock, increased by claimRaisedFunds, decremented by repayments.
      * @return Outstanding debt in supply asset units. Zero if fully repaid.
      */
     function _outstandingDebt() internal view returns (uint256) {
-        uint256 balance = IERC20(asset()).balanceOf(address(this));
-        uint256 owed = _runtime.totalOwed;
-        return balance >= owed ? 0 : owed - balance;
+        return _runtime.totalDebt;
     }
 
     // ──────────────────────────────────────────────────────────────────────
     // Internal — Shared Helpers (state-changing)
     // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @dev Pulls supply asset from `payer`, clamped to outstanding debt, decrements totalDebt, emits Repaid.
+     *      Single entry point for all supply token inflows after fundraising.
+     * @param payer Address to pull supply asset from.
+     * @param amount Requested amount; clamped to outstanding debt.
+     * @custom:event Repaid
+     */
+    function _receiveRepayment(address payer, uint256 amount) internal {
+        uint256 debt = _runtime.totalDebt;
+        uint256 actual = amount > debt ? debt : amount;
+        if (actual == 0) return;
+        _runtime.totalDebt -= actual;
+        IERC20(asset()).safeTransferFrom(payer, address(this), actual);
+        emit Repaid(actual, _outstandingDebt());
+    }
 
     /**
      * @dev Repays outstanding debt by pulling supply asset from `payer`. Clamped to debt.
@@ -563,22 +590,18 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
             revert InvalidState();
         }
 
-        uint256 debt = _outstandingDebt();
-        if (debt == 0) revert NoOutstandingDebt();
-        uint256 amountClamped = amount > debt ? debt : amount;
-
-        IERC20(asset()).safeTransferFrom(payer, address(this), amountClamped);
-
-        emit Repaid(amountClamped, debt - amountClamped);
+        if (_outstandingDebt() == 0) revert NoOutstandingDebt();
+        _receiveRepayment(payer, amount);
         _checkAndAdvanceState();
     }
 
     /**
      * @dev One-time fund withdrawal. Transfers all raised supply assets to `recipient`.
+     *      Increments totalDebt by totalRaised — principal is now owed on top of interest.
      *      Subcontracts wrap this with their own access control.
      *      Only callable during Lock — if lockEndTime passes before claiming, the state advances
      *      to PendingSettlement and this function becomes inaccessible. The supply asset stays in the vault
-     *      and the institution still owes the interest portion (totalOwed - balance = interest).
+     *      and the institution still owes only the interest portion (totalDebt = interest, unchanged).
      * @param recipient Address to receive the raised funds.
      * @custom:error InvalidState if vault is not in Lock state.
      * @custom:error AlreadyWithdrawn if funds already claimed.
@@ -594,6 +617,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         IERC20 supplyToken = IERC20(asset());
         uint256 amount = _runtime.totalRaised;
         _runtime.fundsWithdrawn = true;
+        _runtime.totalDebt += amount;
         supplyToken.safeTransfer(recipient, amount);
 
         emit RaisedFundsClaimed(amount);
