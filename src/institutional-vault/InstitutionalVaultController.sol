@@ -330,7 +330,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param vault Vault address.
      * @param newLI New liquidation incentive (mantissa).
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidLiquidationIncentive If outside (1e18, 1.3e18] range.
+     * @custom:error InvalidLiquidationIncentive If newLI <= 1e18.
      */
     function setLiquidationIncentive(
         address vault,
@@ -338,7 +338,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     ) external {
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (newLI <= 1e18 || newLI > 1.3e18) revert InvalidLiquidationIncentive();
+        if (newLI <= 1e18) revert InvalidLiquidationIncentive();
         emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }

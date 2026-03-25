@@ -40,13 +40,21 @@ interface ILiquidationAdapter {
     // Whitelist Management (Governance)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Add or remove a liquidator from the whitelist.
+    /**
+     * @notice Add or remove a liquidator from the whitelist.
+     * @param liquidator Liquidator address.
+     * @param approved True to add, false to remove.
+     */
     function setLiquidatorWhitelist(
         address liquidator,
         bool approved
     ) external;
 
-    /// @notice Add or remove a settler from the whitelist.
+    /**
+     * @notice Add or remove a settler from the whitelist.
+     * @param settler Settler address.
+     * @param approved True to add, false to remove.
+     */
     function setSettlerWhitelist(
         address settler,
         bool approved
@@ -56,29 +64,44 @@ interface ILiquidationAdapter {
     // Configuration (Governance)
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Set the protocol share of the liquidation incentive (mantissa).
+    /**
+     * @notice Set the protocol share of the liquidation incentive (mantissa).
+     * @param share Protocol share fraction (mantissa, <= 1e18).
+     */
     function setProtocolLiquidationShare(
         uint256 share
     ) external;
 
-    /// @notice Set max fraction of debt repayable per liquidation (global for all vaults).
+    /**
+     * @notice Set max fraction of debt repayable per liquidation (global for all vaults).
+     * @param newCF New close factor (mantissa).
+     */
     function setCloseFactor(
         uint256 newCF
     ) external;
 
-    /// @notice Update ProtocolShareReserve address.
-    /// @custom:event ProtocolShareReserveUpdated
+    /**
+     * @notice Update ProtocolShareReserve address.
+     * @param _psr New ProtocolShareReserve address.
+     * @custom:event ProtocolShareReserveUpdated
+     */
     function setProtocolShareReserve(
         address _psr
     ) external;
 
-    /// @notice Update comptroller address for PSR.
-    /// @custom:event ComptrollerUpdated
+    /**
+     * @notice Update comptroller address for PSR.
+     * @param _comptroller New comptroller address.
+     * @custom:event ComptrollerUpdated
+     */
     function setComptroller(
         address _comptroller
     ) external;
 
-    /// @notice Transfer accrued protocol share to PSR.
+    /**
+     * @notice Transfer accrued protocol share to PSR.
+     * @param collateral Collateral token address to sweep.
+     */
     function sweepProtocolShareToReserve(
         address collateral
     ) external;
@@ -87,14 +110,22 @@ interface ILiquidationAdapter {
     // Views
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @notice Whether address can call liquidate().
+    /**
+     * @notice Whether address can call liquidate().
+     * @param liquidator Address to check.
+     * @return True if whitelisted.
+     */
     function isWhitelistedLiquidator(
-        address
+        address liquidator
     ) external view returns (bool);
 
-    /// @notice Whether address can call liquidateOverdueVault().
+    /**
+     * @notice Whether address can call liquidateOverdueVault().
+     * @param settler Address to check.
+     * @return True if whitelisted.
+     */
     function isWhitelistedSettler(
-        address
+        address settler
     ) external view returns (bool);
 
     /// @notice Current protocol share (mantissa).
@@ -103,7 +134,11 @@ interface ILiquidationAdapter {
     /// @notice Max fraction of debt repayable per liquidation (global).
     function closeFactor() external view returns (uint256);
 
-    /// @notice Accrued protocol share for a collateral token (pending sweep).
+    /**
+     * @notice Accrued protocol share for a collateral token (pending sweep).
+     * @param collateral Collateral token address.
+     * @return Accrued amount.
+     */
     function protocolShareAccrued(
         address collateral
     ) external view returns (uint256);
