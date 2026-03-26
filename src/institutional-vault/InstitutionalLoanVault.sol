@@ -177,7 +177,7 @@ contract InstitutionalLoanVault is BaseVault {
      */
     function repayBadDebt(
         uint256 repayAmount
-    ) external nonReentrant {
+    ) external nonReentrant whenNotCompletelyPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
@@ -388,6 +388,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @custom:event RaisedFundsClaimed
      */
     function claimRaisedFunds() external onlyPositionHolder nonReentrant whenNotPaused {
+        _checkAndAdvanceState();
         (, uint256 shortfall) = _getHypotheticalVaultLiquidity(0, _runtime.totalRaised);
         if (shortfall > 0) revert ClaimWouldBreachLT();
         _claimRaisedFunds(msg.sender);
@@ -611,9 +612,9 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 collateralBalance = _instRuntime.totalCollateralDeposited;
         if (seizeAmount > collateralBalance) revert InsufficientCollateralForSeize(seizeAmount, collateralBalance);
 
+        _instRuntime.totalCollateralDeposited -= seizeAmount;
         _receiveRepayment(msg.sender, actualRepay);
         collateralToken.safeTransfer(msg.sender, seizeAmount);
-        _instRuntime.totalCollateralDeposited -= seizeAmount;
     }
 
     // ──────────────────────────────────────────────────────────────────────
