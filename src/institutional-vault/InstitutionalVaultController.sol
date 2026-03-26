@@ -75,9 +75,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     event OracleUpdated(address indexed oldOracle, address indexed newOracle);
     event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
     event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
-    event LiquidationThresholdUpdated(address indexed vault, uint256 newLT);
-    event LiquidationIncentiveUpdated(address indexed vault, uint256 newLI);
-    event LatePenaltyRateUpdated(address indexed vault, uint256 newRate);
+    event LiquidationThresholdUpdated(address indexed vault, uint256 oldLT, uint256 newLT);
+    event LiquidationIncentiveUpdated(address indexed vault, uint256 oldLI, uint256 newLI);
+    event LatePenaltyRateUpdated(address indexed vault, uint256 oldRate, uint256 newRate);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -287,6 +287,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param newLT New liquidation threshold (mantissa).
      * @custom:error VaultNotRegistered If vault is not in the registry.
      * @custom:error InvalidLiquidationThreshold If newLT == 0 or newLT > MANTISSA_ONE.
+     * @custom:event LiquidationThresholdUpdated
      */
     function setLiquidationThreshold(
         address vault,
@@ -295,7 +296,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidLiquidationThreshold();
-        emit LiquidationThresholdUpdated(vault, newLT);
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        emit LiquidationThresholdUpdated(vault, rc.liquidationThreshold, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
 
@@ -305,6 +307,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param newLI New liquidation incentive (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
      * @custom:error VaultNotRegistered If vault is not in the registry.
      * @custom:error InvalidLiquidationIncentive If newLI <= MANTISSA_ONE or newLI > MANTISSA_ONE_AND_HALF.
+     * @custom:event LiquidationIncentiveUpdated
      */
     function setLiquidationIncentive(
         address vault,
@@ -313,7 +316,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= MANTISSA_ONE || newLI > MANTISSA_ONE_AND_HALF) revert InvalidLiquidationIncentive();
-        emit LiquidationIncentiveUpdated(vault, newLI);
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        emit LiquidationIncentiveUpdated(vault, rc.liquidationIncentive, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
 
@@ -323,6 +327,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param newRate New late penalty rate (mantissa). Must be in range (MANTISSA_ONE, MANTISSA_ONE_AND_HALF].
      * @custom:error VaultNotRegistered If vault is not in the registry.
      * @custom:error InvalidLatePenaltyRate If newRate <= MANTISSA_ONE or newRate > MANTISSA_ONE_AND_HALF.
+     * @custom:event LatePenaltyRateUpdated
      */
     function setLatePenaltyRate(
         address vault,
@@ -331,7 +336,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= MANTISSA_ONE || newRate > MANTISSA_ONE_AND_HALF) revert InvalidLatePenaltyRate();
-        emit LatePenaltyRateUpdated(vault, newRate);
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        emit LatePenaltyRateUpdated(vault, rc.latePenaltyRate, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
 

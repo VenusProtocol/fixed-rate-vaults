@@ -67,8 +67,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
 
     event LiquidatorWhitelistUpdated(address indexed liquidator, bool approved);
     event SettlerWhitelistUpdated(address indexed settler, bool approved);
-    event ProtocolLiquidationShareUpdated(uint256 share);
-    event CloseFactorUpdated(uint256 closeFactor);
+    event ProtocolLiquidationShareUpdated(uint256 oldShare, uint256 newShare);
+    event CloseFactorUpdated(uint256 oldCloseFactor, uint256 newCloseFactor);
     event LiquidationCollateralSplit(uint256 totalSeized, uint256 protocolAmount, uint256 callerAmount);
     event ProtocolShareSweptToReserve(address indexed collateral, uint256 amount);
     event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
@@ -188,8 +188,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) external {
         _checkAccessAllowed("setProtocolLiquidationShare(uint256)");
         if (share > MANTISSA_ONE) revert InvalidShare();
+        emit ProtocolLiquidationShareUpdated(protocolLiquidationShare, share);
         protocolLiquidationShare = share;
-        emit ProtocolLiquidationShareUpdated(share);
     }
 
     /**
@@ -203,8 +203,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     ) external {
         _checkAccessAllowed("setCloseFactor(uint256)");
         if (newCF == 0 || newCF > MANTISSA_ONE) revert InvalidCloseFactor();
+        emit CloseFactorUpdated(closeFactor, newCF);
         closeFactor = newCF;
-        emit CloseFactorUpdated(newCF);
     }
 
     /**
@@ -224,7 +224,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /**
      * @notice Update comptroller address for PSR.
      * @param comptroller_ New comptroller address.
-     * @custom:error InvalidAddress if zero address.
+     * @custom:error InvalidAddress If zero address.
+     * @custom:event ComptrollerUpdated
      */
     function setComptroller(
         address comptroller_

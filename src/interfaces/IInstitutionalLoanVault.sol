@@ -117,9 +117,10 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     ) external;
 
     /**
-     * @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured/Liquidated: unrestricted.
+     * @notice Withdraws collateral. Lock: floor + LT-checked. Failed: Scenario A/B. Matured: unrestricted.
+     *         Liquidated: blocked — collateral recoverable by governance via sweep().
      * @param amount Amount of collateral tokens to withdraw.
-     * @custom:error InvalidState If vault is not in Lock, Matured, Failed, or Liquidated.
+     * @custom:error InvalidState If vault is not in Lock, Matured, or Failed.
      * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
      * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
      * @custom:event CollateralWithdrawn Emitted with withdrawal amount.

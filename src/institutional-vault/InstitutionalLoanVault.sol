@@ -73,7 +73,6 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     error InsufficientCollateral();
-    error InsufficientMarginCollateral();
     error NotPositionHolder();
     error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
@@ -170,11 +169,11 @@ contract InstitutionalLoanVault is BaseVault {
      * @notice Permissionless bad-debt rescue. Anyone may repay to settle a vault where collateral < debt.
      * @param repayAmount Amount of supply asset to pull from caller.
      * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
+     * @custom:error ZeroRepayAmount If repayAmount is zero.
+     * @custom:error NoOutstandingDebt If there is no debt to repay.
      * @custom:error NotBadDebt If collateral value >= debt value.
      * @custom:error InsufficientRepayment If outstanding debt after repay still exceeds total interest (principal not
      * fully returned).
-     * @custom:event StateTransition Emitted for transition to Liquidated.
-     * @custom:event VaultLiquidated Emitted with available balance.
      */
     function repayBadDebt(
         uint256 repayAmount
@@ -188,7 +187,9 @@ contract InstitutionalLoanVault is BaseVault {
         if (repayAmount == 0) revert ZeroRepayAmount();
         uint256 debt = _outstandingDebt();
         if (debt == 0) revert NoOutstandingDebt();
-        if (_getCollateralValueUSD(_instRuntime.totalCollateralDeposited) >= _getDebtValueUSD(debt)) revert NotBadDebt();
+        if (_getCollateralValueUSD(_instRuntime.totalCollateralDeposited) >= _getDebtValueUSD(debt)) {
+            revert NotBadDebt();
+        }
 
         _receiveRepayment(msg.sender, repayAmount);
 
@@ -199,6 +200,7 @@ contract InstitutionalLoanVault is BaseVault {
     /**
      * @notice Updates liquidation threshold. Controller only.
      * @param newLT New liquidation threshold (mantissa).
+     * @custom:event LiquidationThresholdUpdated
      */
     function setLiquidationThreshold(
         uint256 newLT
@@ -210,6 +212,7 @@ contract InstitutionalLoanVault is BaseVault {
     /**
      * @notice Updates liquidation incentive. Controller only.
      * @param newLI New liquidation incentive (mantissa).
+     * @custom:event LiquidationIncentiveUpdated
      */
     function setLiquidationIncentive(
         uint256 newLI
@@ -221,6 +224,7 @@ contract InstitutionalLoanVault is BaseVault {
     /**
      * @notice Updates late penalty rate. Controller only.
      * @param newRate New late penalty rate (mantissa).
+     * @custom:event LatePenaltyRateUpdated
      */
     function setLatePenaltyRate(
         uint256 newRate
@@ -237,6 +241,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @notice HF-based liquidation. LiquidationAdapter only.
      * @param repayAmount Amount of supply asset to repay.
      * @return actualRepay Actual amount repaid after clamping to outstanding debt.
+     * @custom:error ZeroRepayAmount If repayAmount is zero.
      * @custom:error InvalidState If vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
      * @custom:error NoOutstandingDebt If there is no debt to repay.
      * @custom:error NotLiquidatable If vault has no LT shortfall.
@@ -267,6 +272,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @notice Deadline-based liquidation. LiquidationAdapter only.
      * @param repayAmount Amount of supply asset to repay.
      * @return actualRepay Actual amount repaid after clamping to outstanding debt.
+     * @custom:error ZeroRepayAmount If repayAmount is zero.
      * @custom:error InvalidStateForOverdueLiquidation If not in SettlementDeadlineExceeded.
      * @custom:error NoOutstandingDebt If there is no debt to repay.
      * @custom:event OverdueLiquidationExecuted Emitted with settler, repay amount, and collateral seized.
@@ -296,8 +302,9 @@ contract InstitutionalLoanVault is BaseVault {
      *         - Fundraising: institution deposits remaining collateral alongside lender fundraising.
      *         - Lock: top-up collateral.
      * @param amount Amount of collateral tokens to deposit.
-     * @custom:error InsufficientCollateral if deposit in WaitingForMargin does not meet margin threshold.
-     * @custom:event CollateralDeposited, StateTransition (if WaitingForMargin -> MarginDeposited)
+     * @custom:error InvalidState If vault is not in WaitingForMargin, Fundraising, or Lock.
+     * @custom:error InsufficientCollateral If deposit in WaitingForMargin does not meet margin threshold.
+     * @custom:event CollateralDeposited Emitted with actual deposited amount and total collateral.
      */
     function depositCollateral(
         uint256 amount
@@ -328,9 +335,10 @@ contract InstitutionalLoanVault is BaseVault {
      *         - Lock: floor-checked (minimumCollateralRequired) + LT-checked.
      *         - Failed (Scenario A — raised < minCap): withdraw all deposited collateral.
      *         - Failed (Scenario B — institution default): withdraw deposited minus confiscated margin.
-     *         - Matured / Liquidated: capped at totalCollateralDeposited, unrestricted.
+     *         - Matured: capped at totalCollateralDeposited, unrestricted.
+     *         - Liquidated: blocked — collateral is recoverable by governance via sweep().
      * @param amount Amount of collateral tokens to withdraw.
-     * @custom:error InvalidState If vault is not in Lock, Matured, Failed, or Liquidated.
+     * @custom:error InvalidState If vault is not in Lock, Matured, or Failed.
      * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
      * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
      * @custom:event CollateralWithdrawn Emitted with withdrawal amount.
@@ -340,7 +348,7 @@ contract InstitutionalLoanVault is BaseVault {
     ) external onlyPositionHolder nonReentrant whenNotPaused {
         _checkAndAdvanceState();
         VaultState s = _runtime.state;
-        if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) {
+        if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed) {
             revert InvalidState();
         }
 
@@ -364,7 +372,7 @@ contract InstitutionalLoanVault is BaseVault {
             if (amount > available) revert InsufficientCollateral();
         }
 
-        // Failed (insufficient raise), Matured, Liquidated: unrestricted withdrawal
+        // Failed (insufficient raise), Matured: unrestricted withdrawal
         // up to totalCollateralDeposited.
         if (amount > _instRuntime.totalCollateralDeposited) revert InsufficientCollateral();
         _instRuntime.totalCollateralDeposited -= amount;

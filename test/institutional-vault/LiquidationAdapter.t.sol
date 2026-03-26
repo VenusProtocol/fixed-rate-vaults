@@ -364,7 +364,7 @@ contract LiquidationAdapterTest is VaultTestBase {
         uint256 newCF = 0.6e18;
 
         vm.expectEmit(false, false, false, true);
-        emit LiquidationAdapter.CloseFactorUpdated(newCF);
+        emit LiquidationAdapter.CloseFactorUpdated(adapter.closeFactor(), newCF);
 
         adapter.setCloseFactor(newCF);
 
@@ -385,7 +385,7 @@ contract LiquidationAdapterTest is VaultTestBase {
         uint256 newShare = 0.2e18;
 
         vm.expectEmit(false, false, false, true);
-        emit LiquidationAdapter.ProtocolLiquidationShareUpdated(newShare);
+        emit LiquidationAdapter.ProtocolLiquidationShareUpdated(adapter.protocolLiquidationShare(), newShare);
 
         adapter.setProtocolLiquidationShare(newShare);
 

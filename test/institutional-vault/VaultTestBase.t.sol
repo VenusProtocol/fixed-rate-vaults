@@ -201,7 +201,7 @@ abstract contract VaultTestBase is Test {
             "setVaultImplementation(address)",
             "setLiquidationAdapter(address)"
         ];
-        for (uint256 i; i < 15; ++i) {
+        for (uint256 i; i < 14; ++i) {
             acm.giveCallPermission(address(0), controllerSigs[i], admin);
         }
 

@@ -476,7 +476,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         uint256 newLT = 0.8e18;
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalVaultController.LiquidationThresholdUpdated(address(vault), newLT);
+        emit InstitutionalVaultController.LiquidationThresholdUpdated(
+            address(vault), vault.riskConfig().liquidationThreshold, newLT
+        );
 
         controller.setLiquidationThreshold(address(vault), newLT);
 
@@ -488,7 +490,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         uint256 newLI = 1.15e18;
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalVaultController.LiquidationIncentiveUpdated(address(vault), newLI);
+        emit InstitutionalVaultController.LiquidationIncentiveUpdated(
+            address(vault), vault.riskConfig().liquidationIncentive, newLI
+        );
 
         controller.setLiquidationIncentive(address(vault), newLI);
 
@@ -500,7 +504,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         uint256 newRate = 1.2e18;
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalVaultController.LatePenaltyRateUpdated(address(vault), newRate);
+        emit InstitutionalVaultController.LatePenaltyRateUpdated(
+            address(vault), vault.riskConfig().latePenaltyRate, newRate
+        );
 
         controller.setLatePenaltyRate(address(vault), newRate);
 
