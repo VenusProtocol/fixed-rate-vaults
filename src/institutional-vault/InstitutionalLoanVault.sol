@@ -84,7 +84,6 @@ contract InstitutionalLoanVault is BaseVault {
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
     error WithdrawalWouldBreachLT();
     error InvalidOraclePrice();
-    error InvalidRiskParameter();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -209,7 +208,6 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationThreshold(
         uint256 newLT
     ) external onlyController {
-        if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidRiskParameter();
         emit LiquidationThresholdUpdated(_riskConfig.liquidationThreshold, newLT);
         _riskConfig.liquidationThreshold = newLT;
     }
@@ -221,7 +219,6 @@ contract InstitutionalLoanVault is BaseVault {
     function setLiquidationIncentive(
         uint256 newLI
     ) external onlyController {
-        if (newLI <= MANTISSA_ONE) revert InvalidRiskParameter();
         emit LiquidationIncentiveUpdated(_riskConfig.liquidationIncentive, newLI);
         _riskConfig.liquidationIncentive = newLI;
     }
@@ -233,7 +230,6 @@ contract InstitutionalLoanVault is BaseVault {
     function setLatePenaltyRate(
         uint256 newRate
     ) external onlyController {
-        if (newRate <= MANTISSA_ONE) revert InvalidRiskParameter();
         emit LatePenaltyRateUpdated(_riskConfig.latePenaltyRate, newRate);
         _riskConfig.latePenaltyRate = newRate;
     }

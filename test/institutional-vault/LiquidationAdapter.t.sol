@@ -48,6 +48,55 @@ contract LiquidationAdapterTest is VaultTestBase {
         );
     }
 
+    function test_initialize_revertsIfZeroAddress() external {
+        LiquidationAdapter adapterImpl = new LiquidationAdapter();
+        address impl_ = address(adapterImpl);
+        address pa = makeAddr("pa_la");
+
+        vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                LiquidationAdapter.initialize,
+                (address(0), address(psr), comptrollerAddr, PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
+            )
+        );
+
+        vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                LiquidationAdapter.initialize,
+                (address(controller), address(0), comptrollerAddr, PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
+            )
+        );
+
+        vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                LiquidationAdapter.initialize,
+                (address(controller), address(psr), address(0), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
+            )
+        );
+    }
+
+    function test_initialize_revertsIfCloseFactorZero() external {
+        LiquidationAdapter adapterImpl = new LiquidationAdapter();
+        vm.expectRevert(LiquidationAdapter.InvalidCloseFactor.selector);
+        new TransparentUpgradeableProxy(
+            address(adapterImpl),
+            makeAddr("pa3"),
+            abi.encodeCall(
+                LiquidationAdapter.initialize,
+                (address(controller), address(psr), comptrollerAddr, PROTOCOL_LIQ_SHARE, 0, address(acm))
+            )
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 4B — Whitelist Management
     // ──────────────────────────────────────────────────────────────────────

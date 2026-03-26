@@ -43,6 +43,79 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         );
     }
 
+    function test_initialize_revertsIfZeroAddress() external {
+        InstitutionalVaultController impl = new InstitutionalVaultController();
+        address impl_ = address(impl);
+        address pa = makeAddr("pa_ctrl");
+        address validImpl = address(new InstitutionalLoanVault());
+        address validAdapter = makeAddr("adapter");
+        address validOracle = makeAddr("oracle");
+        address validPSR = makeAddr("psr");
+        address validComp = makeAddr("comp");
+        address validToken = makeAddr("token");
+        address validAcm = address(acm);
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (address(0), validAdapter, validOracle, validPSR, validComp, validToken, validAcm)
+            )
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (validImpl, address(0), validOracle, validPSR, validComp, validToken, validAcm)
+            )
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (validImpl, validAdapter, address(0), validPSR, validComp, validToken, validAcm)
+            )
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (validImpl, validAdapter, validOracle, address(0), validComp, validToken, validAcm)
+            )
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (validImpl, validAdapter, validOracle, validPSR, address(0), validToken, validAcm)
+            )
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidAddress.selector);
+        new TransparentUpgradeableProxy(
+            impl_,
+            pa,
+            abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (validImpl, validAdapter, validOracle, validPSR, validComp, address(0), validAcm)
+            )
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 5B — Vault Deployment
     // ──────────────────────────────────────────────────────────────────────
@@ -74,46 +147,6 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertEq(posToken.tokenIdToVault(tokenId), vaultAddr);
     }
 
-    function test_createVault_revertsIfInvalidConfig_supplyEqualsCollateral() external {
-        InstitutionalConfig memory badInstCfg = _buildInstConfig();
-        badInstCfg.collateralAsset = IERC20(address(supply)); // same as supply asset
-
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), badInstCfg, _buildRiskConfig());
-    }
-
-    function test_createVault_revertsIfZeroAPY() external {
-        VaultConfig memory badCfg = _buildVaultConfig();
-        badCfg.fixedAPY = 0;
-
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(badCfg, _buildInstConfig(), _buildRiskConfig());
-    }
-
-    function test_createVault_revertsIfZeroAddresses_supply() external {
-        VaultConfig memory badCfg = _buildVaultConfig();
-        badCfg.supplyAsset = IERC20(address(0));
-
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(badCfg, _buildInstConfig(), _buildRiskConfig());
-    }
-
-    function test_createVault_revertsIfMinCapExceedsMax() external {
-        VaultConfig memory badCfg = _buildVaultConfig();
-        badCfg.minBorrowCap = badCfg.maxBorrowCap + 1;
-
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(badCfg, _buildInstConfig(), _buildRiskConfig());
-    }
-
-    function test_createVault_revertsIfInvalidRiskConfig_ltZero() external {
-        RiskConfig memory badRisk = _buildRiskConfig();
-        badRisk.liquidationThreshold = 0;
-
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), badRisk);
-    }
-
     function test_createVault_incrementsNonce() external {
         address vault1 = _createVault();
         address vault2 = _createVault();
@@ -121,6 +154,251 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertFalse(vault1 == vault2);
         assertEq(controller.institutionNonce(institution), 2);
         assertEq(controller.allVaultsLength(), 2);
+    }
+
+    // VaultConfig boundaries
+
+    function test_createVault_revertsIfOpenDurationZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.openDuration = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfLockDurationZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.lockDuration = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfSettlementWindowZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.settlementWindow = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfMaxBorrowCapZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.maxBorrowCap = 0;
+        cfg.minBorrowCap = 0; // avoid min > max triggering first
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfMinBorrowCapZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.minBorrowCap = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfMinCapExceedsMax() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.minBorrowCap = cfg.maxBorrowCap + 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_minCapEqualsMax_succeeds() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.minBorrowCap = cfg.maxBorrowCap;
+
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfFixedAPYZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.fixedAPY = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfSupplyAssetZero() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.supplyAsset = IERC20(address(0));
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfReserveFactorExceedsMantissa() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.reserveFactor = MANTISSA_ONE + 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    function test_createVault_reserveFactorAtMantissa_succeeds() external {
+        VaultConfig memory cfg = _buildVaultConfig();
+        cfg.reserveFactor = MANTISSA_ONE;
+
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig());
+    }
+
+    // InstitutionalConfig boundaries
+
+    function test_createVault_revertsIfCollateralAssetZero() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.collateralAsset = IERC20(address(0));
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfSupplyEqualsCollateral() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.collateralAsset = IERC20(address(supply));
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfInstitutionOperatorZero() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.institutionOperator = address(0);
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfIdealCollateralZero() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.idealCollateralAmount = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfMarginRateZero() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.marginRate = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_revertsIfMarginRateExceedsMantissa() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.marginRate = MANTISSA_ONE + 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    function test_createVault_marginRateAtMantissa_succeeds() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.marginRate = MANTISSA_ONE;
+
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig());
+    }
+
+    // RiskConfig boundaries
+
+    function test_createVault_revertsIfLTZero() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_revertsIfLTExceedsMantissa() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = MANTISSA_ONE + 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_ltAtMantissa_succeeds() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = MANTISSA_ONE;
+
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_revertsIfLIAtMantissa() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationIncentive = MANTISSA_ONE;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_revertsIfLIBelowMantissa() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationIncentive = MANTISSA_ONE - 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_liJustAboveMantissa_succeeds() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationIncentive = MANTISSA_ONE + 1;
+
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_revertsIfLatePenaltyAtMantissa() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.latePenaltyRate = MANTISSA_ONE;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_revertsIfLatePenaltyBelowMantissa() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.latePenaltyRate = MANTISSA_ONE - 1;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_latePenaltyJustAboveMantissa_succeeds() external {
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.latePenaltyRate = MANTISSA_ONE + 1;
+
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc);
+    }
+
+    function test_createVault_allMinimumValidParams_succeeds() external {
+        VaultConfig memory cfg = VaultConfig({
+            supplyAsset: IERC20(address(supply)),
+            fixedAPY: 1,
+            reserveFactor: 0,
+            minBorrowCap: 1,
+            maxBorrowCap: 1,
+            minSupplierDeposit: 0,
+            openDuration: 1,
+            lockDuration: 1,
+            settlementWindow: 1
+        });
+
+        InstitutionalConfig memory instCfg = InstitutionalConfig({
+            collateralAsset: IERC20(address(collateral)),
+            idealCollateralAmount: 1,
+            marginRate: 1,
+            institutionOperator: institution,
+            positionTokenId: 0
+        });
+
+        RiskConfig memory rc = RiskConfig({
+            liquidationThreshold: 1, liquidationIncentive: MANTISSA_ONE + 1, latePenaltyRate: MANTISSA_ONE + 1
+        });
+
+        controller.createVault(cfg, instCfg, rc);
     }
 
     // ──────────────────────────────────────────────────────────────────────
