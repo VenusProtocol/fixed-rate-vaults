@@ -321,8 +321,8 @@ contract E2EScenariosTest is VaultTestBase {
         // repayBadDebt: must cover at least (remainingDebt - totalInterest) so totalDebt ≤ totalInterest.
         uint256 badDebtCoverage = remainingDebt - totalInterest; // 400_000e18
         supply.mint(address(this), badDebtCoverage);
-        supply.approve(address(controller), badDebtCoverage);
-        controller.repayBadDebt(address(vault), badDebtCoverage);
+        supply.approve(address(vault), badDebtCoverage);
+        vault.repayBadDebt(badDebtCoverage);
 
         // Vault transitions to Liquidated; _settleProtocolShare runs.
         assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
@@ -366,8 +366,8 @@ contract E2EScenariosTest is VaultTestBase {
 
         // Protocol covers the full outstanding debt (principal + interest) via repayBadDebt.
         supply.mint(address(this), fullDebt);
-        supply.approve(address(controller), fullDebt);
-        controller.repayBadDebt(address(vault), fullDebt);
+        supply.approve(address(vault), fullDebt);
+        vault.repayBadDebt(fullDebt);
 
         assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
 
@@ -478,8 +478,8 @@ contract E2EScenariosTest is VaultTestBase {
         uint256 badDebtCoverage = remainingDebt - totalInterest; // 460_000e18
 
         supply.mint(address(this), badDebtCoverage);
-        supply.approve(address(controller), badDebtCoverage);
-        controller.repayBadDebt(address(vault), badDebtCoverage);
+        supply.approve(address(vault), badDebtCoverage);
+        vault.repayBadDebt(badDebtCoverage);
 
         assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
 

@@ -92,12 +92,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     // ──────────────────────────────────────────────────────────────────────
 
     modifier onlyWhitelistedLiquidator() {
-        _checkWhitelistedLiquidator();
+        if (!isWhitelistedLiquidator[msg.sender]) revert NotWhitelistedLiquidator();
         _;
     }
 
     modifier onlyWhitelistedSettler() {
-        _checkWhitelistedSettler();
+        if (!isWhitelistedSettler[msg.sender]) revert NotWhitelistedSettler();
         _;
     }
 
@@ -285,18 +285,6 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Internal — Modifier Helpers
-    // ──────────────────────────────────────────────────────────────────────
-
-    function _checkWhitelistedLiquidator() internal view {
-        if (!isWhitelistedLiquidator[msg.sender]) revert NotWhitelistedLiquidator();
-    }
-
-    function _checkWhitelistedSettler() internal view {
-        if (!isWhitelistedSettler[msg.sender]) revert NotWhitelistedSettler();
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
     // Internal — State-Changing
     // ──────────────────────────────────────────────────────────────────────
 
@@ -326,9 +314,6 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         if (actualRepay < repayAmount) {
             supplyAsset.safeTransfer(msg.sender, repayAmount - actualRepay);
         }
-
-        // Clear leftover approval
-        supplyAsset.forceApprove(vault, 0);
 
         // Split seized collateral
         RiskConfig memory rc = v.riskConfig();

@@ -521,7 +521,7 @@ contract InstitutionalLoanVault is BaseVault {
         super._enterLock(totalRaised);
         uint256 idealCollateral = _instConfig.idealCollateralAmount;
         _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
-        _instRuntime.idealCollateralValuation = _getCollateralValueUSD(_instRuntime.totalCollateralDeposited);
+        _instRuntime.idealCollateralValuation = _getCollateralValueUSD(_instRuntime.minimumCollateralRequired);
     }
 
     /**

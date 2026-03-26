@@ -185,7 +185,7 @@ abstract contract VaultTestBase is Test {
 
     function _grantAllPermissions() internal {
         // Controller functions
-        string[15] memory controllerSigs = [
+        string[14] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig)",
             "openVault(address)",
@@ -193,7 +193,6 @@ abstract contract VaultTestBase is Test {
             "completePauseVault(address)",
             "unpauseVault(address)",
             "closeVault(address)",
-            "repayBadDebt(address,uint256)",
             "approvePositionTransfer(address)",
             "revokePositionTransfer(address)",
             "setLiquidationThreshold(address,uint256)",

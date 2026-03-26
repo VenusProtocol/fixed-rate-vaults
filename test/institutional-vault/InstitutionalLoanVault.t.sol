@@ -1411,7 +1411,7 @@ contract CrossDecimalLiquidationTest is Test {
     }
 
     function _grantAllPermissions() internal {
-        string[15] memory controllerSigs = [
+        string[14] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig)",
             "openVault(address)",
@@ -1419,7 +1419,6 @@ contract CrossDecimalLiquidationTest is Test {
             "completePauseVault(address)",
             "unpauseVault(address)",
             "closeVault(address)",
-            "repayBadDebt(address,uint256)",
             "approvePositionTransfer(address)",
             "revokePositionTransfer(address)",
             "setLiquidationThreshold(address,uint256)",

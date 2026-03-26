@@ -3,8 +3,6 @@ pragma solidity 0.8.25;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { AccessControlledV8 } from "@venusprotocol/governance-contracts/contracts/Governance/AccessControlledV8.sol";
 
 import { VaultConfig } from "../interfaces/IVaultTypes.sol";
@@ -20,8 +18,6 @@ import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVault
  * @dev Deployed as a transparent proxy (upgradeable via ProxyAdmin).
  */
 contract InstitutionalVaultController is Initializable, AccessControlledV8, IInstitutionalVaultController {
-    using SafeERC20 for IERC20;
-
     // ──────────────────────────────────────────────────────────────────────
     // Constants
     // ──────────────────────────────────────────────────────────────────────
@@ -180,7 +176,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         vault = Clones.cloneDeterministic(vaultImplementation, salt);
 
         // Assemble institutional config with tokenId and initialize
-        InstitutionalConfig memory assembledInstConfig = _withPositionTokenId(_instConfig, tokenId);
+        InstitutionalConfig memory assembledInstConfig = _assembleInstConfig(_instConfig, tokenId);
         IInstitutionalLoanVault(vault)
             .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, liquidationAdapter);
 
@@ -255,32 +251,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("closeVault(address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         IInstitutionalLoanVault(vault).closeVault();
-    }
-
-    /**
-     * @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
-     * @param vault Vault address.
-     * @param repayAmount Amount to pull from caller.
-     * @custom:error VaultNotRegistered If vault is not in the registry.
-     */
-    function repayBadDebt(
-        address vault,
-        uint256 repayAmount
-    ) external {
-        _checkAccessAllowed("repayBadDebt(address,uint256)");
-        if (!isRegistered[vault]) revert VaultNotRegistered();
-
-        IInstitutionalLoanVault v = IInstitutionalLoanVault(vault);
-
-        if (repayAmount > 0) {
-            IERC20 supplyAsset = IERC20(address(v.config().supplyAsset));
-            supplyAsset.safeTransferFrom(msg.sender, address(this), repayAmount);
-            supplyAsset.forceApprove(vault, repayAmount);
-            v.repayBadDebt(repayAmount);
-            supplyAsset.forceApprove(vault, 0);
-        } else {
-            v.repayBadDebt(0);
-        }
     }
 
     /**
@@ -493,7 +463,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     // ──────────────────────────────────────────────────────────────────────
 
     /// @dev Assembles InstitutionalConfig with the minted tokenId.
-    function _withPositionTokenId(
+    function _assembleInstConfig(
         InstitutionalConfig calldata c,
         uint256 tokenId
     ) internal pure returns (InstitutionalConfig memory) {

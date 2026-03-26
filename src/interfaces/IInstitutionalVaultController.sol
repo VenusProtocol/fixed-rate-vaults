@@ -140,20 +140,6 @@ interface IInstitutionalVaultController is IVaultController {
     ) external;
 
     // ──────────────────────────────────────────────────────────────────────
-    // Bad-Debt Rescue
-    // ──────────────────────────────────────────────────────────────────────
-
-    /**
-     * @notice Bad-debt rescue. Pulls funds from caller and repays vault debt.
-     * @param vault Vault address with bad debt.
-     * @param repayAmount Amount of supply asset to repay.
-     */
-    function repayBadDebt(
-        address vault,
-        uint256 repayAmount
-    ) external;
-
-    // ──────────────────────────────────────────────────────────────────────
     // Registry & Views
     // ──────────────────────────────────────────────────────────────────────
 
