@@ -43,7 +43,6 @@ contract TestVault is BaseVault {
     function repay(
         uint256 amount
     ) external nonReentrant whenNotCompletelyPaused {
-        if (amount == 0) revert ZeroRepayAmount();
         _repay(msg.sender, amount);
     }
 
@@ -58,22 +57,6 @@ contract TestVault is BaseVault {
     function forceSettle() external {
         _runtime.state = VaultState.Matured;
         _settleProtocolShare();
-    }
-
-    function _advanceStateFromOpen() internal override {
-        if (block.timestamp < _runtime.openEndTime) return;
-        uint256 raised = _runtime.totalRaised;
-        if (raised >= _config.minBorrowCap) {
-            _runtime.state = VaultState.Lock;
-            _runtime.totalDebt = _computeTotalInterest();
-            emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
-            emit VaultLocked(raised, _runtime.lockEndTime);
-        } else {
-            _runtime.state = VaultState.Failed;
-            _runtime.settlementAmount = raised;
-            emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
-            emit VaultFailed(raised, _config.minBorrowCap);
-        }
     }
 }
 

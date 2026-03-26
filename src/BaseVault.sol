@@ -420,9 +420,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
-        // Fundraising -> next state (vault-type-specific logic)
+        // Fundraising -> Lock or Failed
         if (s == VaultState.Fundraising) {
-            _advanceStateFromOpen();
+            if (currentTime < _runtime.openEndTime) return;
+            uint256 totalRaised = _runtime.totalRaised;
+            if (totalRaised >= _config.minBorrowCap) {
+                _enterLock(totalRaised);
+            } else {
+                _enterFailed(totalRaised);
+            }
             return;
         }
 
@@ -430,8 +436,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
 
         // Lock -> PendingSettlement (falls through to check Matured/SettlementDeadlineExceeded)
         if (s == VaultState.Lock && currentTime >= lockEnd) {
-            _runtime.state = VaultState.PendingSettlement;
-            emit StateTransition(VaultState.Lock, VaultState.PendingSettlement, currentTime);
+            _enterPendingSettlement();
             s = VaultState.PendingSettlement;
         }
 
@@ -439,26 +444,73 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         if (s == VaultState.PendingSettlement) {
             uint256 debt = _outstandingDebt();
             if (debt == 0 && currentTime >= lockEnd) {
-                _runtime.state = VaultState.Matured;
-                emit StateTransition(VaultState.PendingSettlement, VaultState.Matured, currentTime);
-                _settleProtocolShare();
+                _enterMatured(VaultState.PendingSettlement);
                 return;
             }
             if (currentTime > _runtime.settlementDeadline && debt > 0) {
-                _runtime.state = VaultState.SettlementDeadlineExceeded;
-                emit StateTransition(VaultState.PendingSettlement, VaultState.SettlementDeadlineExceeded, currentTime);
+                _enterSettlementDeadlineExceeded();
                 return;
             }
         }
 
         // SettlementDeadlineExceeded -> Matured
         if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0 && currentTime >= lockEnd) {
-            _runtime.state = VaultState.Matured;
-            emit StateTransition(VaultState.SettlementDeadlineExceeded, VaultState.Matured, currentTime);
-            _settleProtocolShare();
-            return;
+            _enterMatured(VaultState.SettlementDeadlineExceeded);
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — State Entry Functions (state-changing)
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Fundraising -> Lock. Initialises totalDebt to interest-only.
+    function _enterLock(
+        uint256 totalRaised
+    ) internal virtual {
+        _runtime.state = VaultState.Lock;
+        _runtime.totalDebt = _computeTotalInterest();
+        emit StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
+        emit VaultLocked(totalRaised, _runtime.lockEndTime);
+    }
+
+    /// @dev Fundraising -> Failed. Sets settlementAmount to totalRaised (no protocol fee).
+    function _enterFailed(
+        uint256 totalRaised
+    ) internal virtual {
+        _runtime.state = VaultState.Failed;
+        _runtime.settlementAmount = totalRaised;
+        emit StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp);
+        emit VaultFailed(totalRaised, _config.minBorrowCap);
+    }
+
+    /// @dev Lock -> PendingSettlement.
+    function _enterPendingSettlement() internal virtual {
+        _runtime.state = VaultState.PendingSettlement;
+        emit StateTransition(VaultState.Lock, VaultState.PendingSettlement, block.timestamp);
+    }
+
+    /// @dev PendingSettlement -> SettlementDeadlineExceeded.
+    function _enterSettlementDeadlineExceeded() internal virtual {
+        _runtime.state = VaultState.SettlementDeadlineExceeded;
+        emit StateTransition(VaultState.PendingSettlement, VaultState.SettlementDeadlineExceeded, block.timestamp);
+    }
+
+    /**
+     * @dev Transitions to Matured from PendingSettlement or SettlementDeadlineExceeded.
+     *      Triggers protocol fee settlement.
+     * @param from Source state (PendingSettlement or SettlementDeadlineExceeded).
+     */
+    function _enterMatured(
+        VaultState from
+    ) internal virtual {
+        _runtime.state = VaultState.Matured;
+        emit StateTransition(from, VaultState.Matured, block.timestamp);
+        _settleProtocolShare();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Settlement (state-changing)
+    // ──────────────────────────────────────────────────────────────────────
 
     /**
      * @dev Computes protocol fee and surplus, transfers both to PSR, and sets settlementAmount.
@@ -591,6 +643,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      *      Subcontracts wrap this with their own access control.
      * @param payer Address to pull supply asset from.
      * @param amount Requested repay amount (will be clamped to outstanding debt).
+     * @custom:error ZeroRepayAmount if amount is zero.
      * @custom:error InvalidState if vault is not in Lock, PendingSettlement, or SettlementDeadlineExceeded.
      * @custom:error NoOutstandingDebt if there is no debt to repay.
      * @custom:event Repaid
@@ -599,6 +652,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address payer,
         uint256 amount
     ) internal {
+        if (amount == 0) revert ZeroRepayAmount();
+
         VaultState s = _runtime.state;
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
             revert InvalidState();
@@ -640,14 +695,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     // ──────────────────────────────────────────────────────────────────────
     // Internal — Virtual Hooks
     // ──────────────────────────────────────────────────────────────────────
-
-    /**
-     * @dev Fundraising -> next state. Every vault type must override with its own transition logic.
-     *      For institutional vaults, both institution (collateral) and suppliers (deposits) participate
-     *      during Fundraising, so the transition evaluates both sides.
-     *      For Ceffu vaults, only suppliers are involved during Fundraising.
-     */
-    function _advanceStateFromOpen() internal virtual { }
 
     /**
      * @dev Hook called after each supplier withdrawal (shares already burned, supply asset transferred).
