@@ -1207,12 +1207,12 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         (uint256 liqBefore,) = vault.getVaultLiquidity();
         uint256 collatBal = vault.institutionalRuntime().totalCollateralDeposited;
 
-        (uint256 liqAfter, uint256 shortfallAfter) = vault.getHypotheticalVaultLiquidity(collatBal / 2);
+        (uint256 liqAfter, uint256 shortfallAfter) = vault.getHypotheticalVaultLiquidity(collatBal / 2, 0);
 
         // Simulated withdrawal must reduce liquidity.
         assertLt(liqAfter, liqBefore);
         // Full removal must create shortfall.
-        (, uint256 shortfallFull) = vault.getHypotheticalVaultLiquidity(collatBal);
+        (, uint256 shortfallFull) = vault.getHypotheticalVaultLiquidity(collatBal, 0);
         assertGt(shortfallFull, shortfallAfter);
     }
 

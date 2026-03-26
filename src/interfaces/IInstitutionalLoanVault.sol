@@ -132,6 +132,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @notice One-time function. Transfers all raised supply assets to institution operator.
      * @custom:error InvalidState If vault is not in Lock state.
      * @custom:error AlreadyWithdrawn If funds already claimed.
+     * @custom:error ClaimWouldBreachLT If post-claim debt would exceed LT cap.
      * @custom:event RaisedFundsClaimed Emitted with claimed amount.
      */
     function claimRaisedFunds() external;
@@ -274,13 +275,15 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall);
 
     /**
-     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal and/or debt increase.
      * @param withdrawAmount Collateral amount to simulate withdrawing.
+     * @param additionalDebt Additional debt to simulate on top of outstanding.
      * @return liquidity Surplus collateral value above the liquidation threshold.
      * @return shortfall Deficit collateral value below the liquidation threshold.
      */
     function getHypotheticalVaultLiquidity(
-        uint256 withdrawAmount
+        uint256 withdrawAmount,
+        uint256 additionalDebt
     ) external view returns (uint256 liquidity, uint256 shortfall);
 
     /**

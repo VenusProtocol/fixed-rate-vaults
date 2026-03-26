@@ -83,6 +83,7 @@ contract InstitutionalLoanVault is BaseVault {
     error ExceedsCloseFactor();
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
     error WithdrawalWouldBreachLT();
+    error ClaimWouldBreachLT();
     error InvalidOraclePrice();
 
     // ──────────────────────────────────────────────────────────────────────
@@ -185,8 +186,9 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         if (repayAmount == 0) revert ZeroRepayAmount();
-        if (_outstandingDebt() == 0) revert NoOutstandingDebt();
-        if (_getCollateralValueUSD() >= _getDebtValueUSD()) revert NotBadDebt();
+        uint256 debt = _outstandingDebt();
+        if (debt == 0) revert NoOutstandingDebt();
+        if (_getCollateralValueUSD(_instRuntime.totalCollateralDeposited) >= _getDebtValueUSD(debt)) revert NotBadDebt();
 
         _receiveRepayment(msg.sender, repayAmount);
 
@@ -254,7 +256,7 @@ contract InstitutionalLoanVault is BaseVault {
         if (debt == 0) revert NoOutstandingDebt();
         actualRepay = repayAmount > debt ? debt : repayAmount;
 
-        (, uint256 shortfall) = _getHypotheticalVaultLiquidity(0);
+        (, uint256 shortfall) = _getHypotheticalVaultLiquidity(0, 0);
         if (shortfall == 0) revert NotLiquidatable();
 
         uint256 seizeAmount = _executeLiquidation(debt, actualRepay, LiquidationType.HF_BASED);
@@ -350,7 +352,7 @@ contract InstitutionalLoanVault is BaseVault {
             if (collateralBalance < _instRuntime.minimumCollateralRequired + amount) revert InsufficientCollateral();
 
             if (_outstandingDebt() > 0) {
-                (, uint256 shortfall) = _getHypotheticalVaultLiquidity(amount);
+                (, uint256 shortfall) = _getHypotheticalVaultLiquidity(amount, 0);
                 if (shortfall > 0) revert WithdrawalWouldBreachLT();
             }
         }
@@ -374,9 +376,12 @@ contract InstitutionalLoanVault is BaseVault {
     /**
      * @notice One-time fund withdrawal. Transfers all raised supply assets to institution.
      * @custom:error AlreadyWithdrawn if funds already claimed.
+     * @custom:error ClaimWouldBreachLT if post-claim debt would exceed LT cap.
      * @custom:event RaisedFundsClaimed
      */
     function claimRaisedFunds() external onlyPositionHolder nonReentrant whenNotPaused {
+        (, uint256 shortfall) = _getHypotheticalVaultLiquidity(0, _runtime.totalRaised);
+        if (shortfall > 0) revert ClaimWouldBreachLT();
         _claimRaisedFunds(msg.sender);
     }
 
@@ -406,7 +411,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @return Collateral value in 18-decimal USD.
      */
     function getCollateralValueUSD() external view returns (uint256) {
-        return _getCollateralValueUSD();
+        return _getCollateralValueUSD(_instRuntime.totalCollateralDeposited);
     }
 
     /**
@@ -414,7 +419,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @return Debt value in 18-decimal USD.
      */
     function getDebtValueUSD() external view returns (uint256) {
-        return _getDebtValueUSD();
+        return _getDebtValueUSD(_outstandingDebt());
     }
 
     /**
@@ -447,19 +452,21 @@ contract InstitutionalLoanVault is BaseVault {
      * @return shortfall LT shortfall (0 if healthy).
      */
     function getVaultLiquidity() external view returns (uint256 liquidity, uint256 shortfall) {
-        return _getHypotheticalVaultLiquidity(0);
+        return _getHypotheticalVaultLiquidity(0, 0);
     }
 
     /**
-     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal.
+     * @notice Returns hypothetical liquidity/shortfall after a simulated withdrawal and/or debt increase.
      * @param withdrawAmount Simulated collateral withdrawal amount.
+     * @param additionalDebt Simulated additional debt on top of outstanding.
      * @return liquidity Excess liquidity (0 if shortfall).
      * @return shortfall LT shortfall (0 if healthy).
      */
     function getHypotheticalVaultLiquidity(
-        uint256 withdrawAmount
+        uint256 withdrawAmount,
+        uint256 additionalDebt
     ) external view returns (uint256 liquidity, uint256 shortfall) {
-        return _getHypotheticalVaultLiquidity(withdrawAmount);
+        return _getHypotheticalVaultLiquidity(withdrawAmount, additionalDebt);
     }
 
     /**
@@ -514,7 +521,7 @@ contract InstitutionalLoanVault is BaseVault {
         super._enterLock(totalRaised);
         uint256 idealCollateral = _instConfig.idealCollateralAmount;
         _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
-        _instRuntime.idealCollateralValuation = _getCollateralValueUSD();
+        _instRuntime.idealCollateralValuation = _getCollateralValueUSD(_instRuntime.totalCollateralDeposited);
     }
 
     /**
@@ -605,52 +612,55 @@ contract InstitutionalLoanVault is BaseVault {
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Internal collateral USD valuation. Caches oracle and collateral address.
-    function _getCollateralValueUSD() internal view returns (uint256) {
-        uint256 deposited = _instRuntime.totalCollateralDeposited;
-        if (deposited == 0) return 0;
+    /**
+     * @dev Converts a collateral token amount to its USD value via oracle.
+     * @param amount Collateral token amount to price.
+     * @return USD value in 18-decimal format.
+     * @custom:error InvalidOraclePrice if oracle returns zero.
+     */
+    function _getCollateralValueUSD(
+        uint256 amount
+    ) internal view returns (uint256) {
+        if (amount == 0) return 0;
         address collateral = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(collateral);
         if (price == 0) revert InvalidOraclePrice();
-        return (deposited * price) / MANTISSA_ONE;
+        return (amount * price) / MANTISSA_ONE;
     }
 
-    /// @dev Internal debt USD valuation. Caches oracle and supply address.
-    function _getDebtValueUSD() internal view returns (uint256) {
-        uint256 debt = _outstandingDebt();
-        if (debt == 0) return 0;
+    /**
+     * @dev Converts a debt (supply asset) amount to its USD value via oracle.
+     * @param amount Debt amount to price.
+     * @return USD value in 18-decimal format.
+     * @custom:error InvalidOraclePrice if oracle returns zero.
+     */
+    function _getDebtValueUSD(
+        uint256 amount
+    ) internal view returns (uint256) {
+        if (amount == 0) return 0;
         address supply = address(_config.supplyAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
         if (price == 0) revert InvalidOraclePrice();
-        return (debt * price) / MANTISSA_ONE;
+        return (amount * price) / MANTISSA_ONE;
     }
 
     /**
      * @dev Computes liquidity (excess buffer) and shortfall (deficit) for the vault,
-     *      optionally simulating a collateral withdrawal.
+     *      optionally simulating a collateral withdrawal and/or additional debt.
      * @param withdrawAmount Collateral token amount to simulate withdrawing (0 for current state).
+     * @param additionalDebt Additional debt to simulate on top of outstanding (0 for current state).
      * @return liquidity Excess buffer when safe; 0 when shortfall > 0.
      * @return shortfall Deficit when liquidatable; 0 when liquidity > 0.
      */
     function _getHypotheticalVaultLiquidity(
-        uint256 withdrawAmount
+        uint256 withdrawAmount,
+        uint256 additionalDebt
     ) internal view returns (uint256 liquidity, uint256 shortfall) {
-        uint256 collateralUSD = _getCollateralValueUSD();
-        uint256 debtUSD = _getDebtValueUSD();
-        uint256 lt = _riskConfig.liquidationThreshold;
-
-        uint256 withdrawValueUSD;
-        if (withdrawAmount > 0) {
-            uint256 collateralBalance = _instRuntime.totalCollateralDeposited;
-            if (collateralBalance > 0) {
-                withdrawValueUSD = (withdrawAmount * collateralUSD) / collateralBalance;
-            }
-        }
-
-        uint256 collateralAfterWithdraw = collateralUSD > withdrawValueUSD ? collateralUSD - withdrawValueUSD : 0;
-        uint256 ltCap = (collateralAfterWithdraw * lt) / MANTISSA_ONE;
+        uint256 collateralUSD = _getCollateralValueUSD(_instRuntime.totalCollateralDeposited - withdrawAmount);
+        uint256 debtUSD = _getDebtValueUSD(_outstandingDebt() + additionalDebt);
+        uint256 ltCap = (collateralUSD * _riskConfig.liquidationThreshold) / MANTISSA_ONE;
 
         if (debtUSD <= ltCap) {
             return (ltCap - debtUSD, 0);
