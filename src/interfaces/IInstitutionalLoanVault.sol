@@ -108,7 +108,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @custom:error InvalidState If vault is not in Lock, Matured, or Failed.
      * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
      * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
-     * @custom:event CollateralWithdrawn Emitted with withdrawal amount.
+     * @custom:event CollateralReleased Emitted with recipient and withdrawal amount.
      */
     function withdrawCollateral(
         uint256 amount
@@ -166,6 +166,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @custom:error ExceedsCloseFactor If repay exceeds close factor limit.
      * @custom:error InsufficientCollateralForSeize If seize amount exceeds collateral balance.
      * @custom:event LiquidationExecuted Emitted with liquidator, repay amount, and collateral seized.
+     * @custom:event CollateralReleased Emitted with recipient and seized amount.
      */
     function liquidate(
         uint256 repayAmount
@@ -180,6 +181,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @custom:error ExceedsCloseFactor If repay exceeds close factor limit.
      * @custom:error InsufficientCollateralForSeize If seize amount exceeds collateral balance.
      * @custom:event OverdueLiquidationExecuted Emitted with settler, repay amount, and collateral seized.
+     * @custom:event CollateralReleased Emitted with recipient and seized amount.
      */
     function liquidateOverdueVault(
         uint256 repayAmount

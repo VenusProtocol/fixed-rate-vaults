@@ -59,7 +59,7 @@ contract InstitutionalLoanVault is BaseVault {
     event VaultOpened(uint256 openEndTime);
     event VaultLiquidated(uint256 available);
     event CollateralDeposited(uint256 amount, uint256 totalCollateral);
-    event CollateralWithdrawn(uint256 amount);
+    event CollateralReleased(address indexed recipient, uint256 amount);
     event LiquidationExecuted(address indexed liquidator, uint256 repayAmount, uint256 collateralSeized);
     event OverdueLiquidationExecuted(address indexed settler, uint256 repayAmount, uint256 collateralSeized);
     event MarginConfiscated(uint256 marginAmount);
@@ -342,7 +342,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @custom:error InvalidState If vault is not in Lock, Matured, or Failed.
      * @custom:error InsufficientCollateral If withdrawal would breach floor or exceed available amount.
      * @custom:error WithdrawalWouldBreachLT If withdrawal would cause LT shortfall during Lock.
-     * @custom:event CollateralWithdrawn Emitted with withdrawal amount.
+     * @custom:event CollateralReleased Emitted with recipient and withdrawal amount.
      */
     function withdrawCollateral(
         uint256 amount
@@ -352,8 +352,6 @@ contract InstitutionalLoanVault is BaseVault {
         if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed) {
             revert InvalidState();
         }
-
-        IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
 
         // Lock: withdrawal must preserve the minimum collateral floor and pass LT health check.
         if (s == VaultState.Lock) {
@@ -376,10 +374,7 @@ contract InstitutionalLoanVault is BaseVault {
         // Failed (insufficient raise), Matured: unrestricted withdrawal
         // up to totalCollateralDeposited.
         if (amount > _instRuntime.totalCollateralDeposited) revert InsufficientCollateral();
-        _instRuntime.totalCollateralDeposited -= amount;
-
-        collateralToken.safeTransfer(msg.sender, amount);
-        emit CollateralWithdrawn(amount);
+        _releaseCollateral(msg.sender, amount);
     }
 
     /**
@@ -582,14 +577,13 @@ contract InstitutionalLoanVault is BaseVault {
 
         if (compensation > 0) {
             _instRuntime.confiscatedMarginRemaining -= compensation;
-            _instRuntime.totalCollateralDeposited -= compensation;
-            IERC20(address(_instConfig.collateralAsset)).safeTransfer(receiver, compensation);
+            _releaseCollateral(receiver, compensation);
             emit MarginCompensationClaimed(receiver, compensation);
         }
     }
 
     /**
-     * @dev Shared liquidation execution: close factor check, seize calculation, token transfers.
+     * @dev Shared liquidation execution: close factor check, seize calculation, repayment + collateral release.
      *      Fee-on-transfer collateral tokens are NOT supported: totalCollateralDeposited is decremented
      *      by the oracle-computed seizeAmount, not the actual tokens transferred.
      * @param debt Current outstanding debt.
@@ -609,13 +603,27 @@ contract InstitutionalLoanVault is BaseVault {
         if (actualRepay > maxRepay) revert ExceedsCloseFactor();
 
         seizeAmount = _calculateSeizeAmount(actualRepay, liqType);
-        IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
         uint256 collateralBalance = _instRuntime.totalCollateralDeposited;
         if (seizeAmount > collateralBalance) revert InsufficientCollateralForSeize(seizeAmount, collateralBalance);
 
-        _instRuntime.totalCollateralDeposited -= seizeAmount;
         _receiveRepayment(msg.sender, actualRepay);
-        collateralToken.safeTransfer(msg.sender, seizeAmount);
+        _releaseCollateral(msg.sender, seizeAmount);
+    }
+
+    /**
+     * @dev Decrements collateral tracking, transfers collateral out, and emits CollateralReleased.
+     *      Single exit point for all collateral outflows after fundraising.
+     * @param recipient Address to receive the collateral tokens.
+     * @param amount Amount of collateral to release.
+     * @custom:event CollateralReleased
+     */
+    function _releaseCollateral(
+        address recipient,
+        uint256 amount
+    ) internal {
+        _instRuntime.totalCollateralDeposited -= amount;
+        IERC20(address(_instConfig.collateralAsset)).safeTransfer(recipient, amount);
+        emit CollateralReleased(recipient, amount);
     }
 
     // ──────────────────────────────────────────────────────────────────────
