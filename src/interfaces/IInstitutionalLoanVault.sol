@@ -71,7 +71,6 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     /**
      * @notice Recovers any tokens stuck in the vault. Full balance is transferred to the treasury.
      * @param token Token address to sweep.
-     * @custom:error VaultNotClosed If the vault is still active.
      * @custom:error NothingToSweep If the token balance is zero.
      * @custom:event TokensSwept
      */
@@ -267,6 +266,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @param additionalDebt Additional debt to simulate on top of outstanding.
      * @return liquidity Surplus collateral value above the liquidation threshold.
      * @return shortfall Deficit collateral value below the liquidation threshold.
+     * @custom:error WithdrawExceedsCollateral If withdrawAmount exceeds total collateral deposited.
      */
     function getHypotheticalVaultLiquidity(
         uint256 withdrawAmount,

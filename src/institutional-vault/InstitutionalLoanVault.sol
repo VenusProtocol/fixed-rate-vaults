@@ -82,6 +82,7 @@ contract InstitutionalLoanVault is BaseVault {
     error ExceedsCloseFactor();
     error InsufficientCollateralForSeize(uint256 seizeAmount, uint256 availableCollateral);
     error WithdrawalWouldBreachLT();
+    error WithdrawExceedsCollateral();
     error ClaimWouldBreachLT();
     error InvalidOraclePrice();
 
@@ -667,6 +668,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 withdrawAmount,
         uint256 additionalDebt
     ) internal view returns (uint256 liquidity, uint256 shortfall) {
+        if (withdrawAmount > _instRuntime.totalCollateralDeposited) revert WithdrawExceedsCollateral();
         uint256 collateralUSD = _getCollateralValueUSD(_instRuntime.totalCollateralDeposited - withdrawAmount);
         uint256 debtUSD = _getDebtValueUSD(_outstandingDebt() + additionalDebt);
         uint256 ltCap = (collateralUSD * _riskConfig.liquidationThreshold) / MANTISSA_ONE;

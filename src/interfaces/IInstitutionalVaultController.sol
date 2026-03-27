@@ -41,7 +41,7 @@ interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Transitions MarginDeposited -> Open.
+     * @notice Transitions MarginDeposited -> Fundraising.
      * @param vault Vault address to open.
      */
     function openVault(

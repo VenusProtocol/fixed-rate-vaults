@@ -917,13 +917,6 @@ contract BaseVaultTest is Test {
         vault.sweep(address(extraToken));
     }
 
-    function test_sweep_revertsIfVaultActive() external {
-        extraToken.mint(address(vault), 100e18);
-        vm.prank(address(mockVaultController));
-        vm.expectRevert(BaseVault.VaultNotClosed.selector);
-        vault.sweep(address(extraToken));
-    }
-
     function test_sweep_revertsIfNotController() external {
         extraToken.mint(address(vault), 100e18);
         vm.prank(lender1);

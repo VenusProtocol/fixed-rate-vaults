@@ -60,6 +60,7 @@ abstract contract VaultTestBase is Test {
     // ────────────────────────────────────────────────────────
     InstitutionalVaultController internal controller;
     InstitutionalLoanVault internal vault;
+    InstitutionalLoanVault internal deployedVaultImpl;
     LiquidationAdapter internal adapter;
     InstitutionPositionToken internal posToken;
     MockERC20 internal supply;
@@ -120,7 +121,7 @@ abstract contract VaultTestBase is Test {
         posToken = new InstitutionPositionToken();
 
         // Vault implementation (for cloning).
-        InstitutionalLoanVault vaultImpl = new InstitutionalLoanVault();
+        deployedVaultImpl = new InstitutionalLoanVault();
 
         // LiquidationAdapter implementation.
         LiquidationAdapter adapterImpl = new LiquidationAdapter();
@@ -138,7 +139,7 @@ abstract contract VaultTestBase is Test {
                     abi.encodeCall(
                         InstitutionalVaultController.initialize,
                         (
-                            address(vaultImpl),
+                            address(deployedVaultImpl),
                             address(1), // placeholder adapter — updated after adapter deploy
                             address(oracle),
                             address(psr),

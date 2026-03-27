@@ -22,7 +22,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
     // ──────────────────────────────────────────────────────────────────────
 
     function test_initialize_setsAllParams() external {
-        assertEq(controller.vaultImplementation(), _getVaultImpl());
+        assertEq(controller.vaultImplementation(), address(deployedVaultImpl));
         assertEq(controller.liquidationAdapter(), address(adapter));
         assertEq(controller.oracle(), address(oracle));
         assertEq(controller.protocolShareReserve(), address(psr));
@@ -653,13 +653,5 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         // Revoke approval.
         controller.revokePositionTransfer(vaultAddr);
         assertFalse(posToken.transferApproved(tokenId));
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Internal helper — reads current vaultImpl from controller (needed for assertions).
-    // ──────────────────────────────────────────────────────────────────────
-
-    function _getVaultImpl() internal view returns (address) {
-        return controller.vaultImplementation();
     }
 }

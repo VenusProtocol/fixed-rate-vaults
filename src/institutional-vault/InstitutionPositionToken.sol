@@ -70,6 +70,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
 
     /**
      * @notice Mints a new token to `to` for the given vault.
+     *         Uses _safeMint — reverts if `to` is a contract that does not implement IERC721Receiver.
      * @param to The initial institution operator address.
      * @param vault The vault address this token represents.
      * @return tokenId The minted token ID.
