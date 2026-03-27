@@ -76,6 +76,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     error AlreadyWithdrawn();
     error NoOutstandingDebt();
     error ZeroRepayAmount();
+    error VaultNotClosed();
     error NothingToSweep();
     error PartiallyPaused();
     error CompletelyPaused();
@@ -154,17 +155,19 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     /**
      * @notice Recovers any tokens stuck in the vault. Full balance is transferred.
      * @param token Token address to sweep.
+     * @custom:error VaultNotClosed If the vault is still active.
      * @custom:error NothingToSweep If the token balance is zero.
      * @custom:event TokensSwept
      */
     function sweep(
         address token
     ) external onlyController {
+        if (_runtime.isActive) revert VaultNotClosed();
         uint256 amount = IERC20(token).balanceOf(address(this));
         if (amount == 0) revert NothingToSweep();
-        address controller = vaultController;
-        IERC20(token).safeTransfer(controller, amount);
-        emit TokensSwept(token, controller, amount);
+        address recipient = IVaultController(vaultController).treasury();
+        IERC20(token).safeTransfer(recipient, amount);
+        emit TokensSwept(token, recipient, amount);
     }
 
     // ──────────────────────────────────────────────────────────────────────

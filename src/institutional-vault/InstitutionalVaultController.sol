@@ -46,6 +46,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /// @notice Comptroller address for PSR integration.
     address public comptroller;
 
+    /// @notice Treasury address — recipient for swept tokens.
+    address public treasury;
+
     /// @notice InstitutionPositionToken contract address.
     IInstitutionPositionToken public positionToken;
 
@@ -63,7 +66,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     mapping(address => uint256) public institutionNonce;
 
     /// @dev Reserved storage gap for future upgrades.
-    uint256[41] private __gap;
+    uint256[40] private __gap;
 
     // ──────────────────────────────────────────────────────────────────────
     // Events
@@ -75,6 +78,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     event OracleUpdated(address indexed oldOracle, address indexed newOracle);
     event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
     event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
+    event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event LiquidationThresholdUpdated(address indexed vault, uint256 oldLT, uint256 newLT);
     event LiquidationIncentiveUpdated(address indexed vault, uint256 oldLI, uint256 newLI);
     event LatePenaltyRateUpdated(address indexed vault, uint256 oldRate, uint256 newRate);
@@ -111,6 +115,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param oracle_ Venus ResilientOracle address.
      * @param protocolShareReserve_ PSR address.
      * @param comptroller_ Comptroller address for PSR.
+     * @param treasury_ Treasury address — recipient for swept tokens.
      * @param positionToken_ InstitutionPositionToken address.
      * @param acm_ Venus AccessControlManager address.
      */
@@ -120,6 +125,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         address oracle_,
         address protocolShareReserve_,
         address comptroller_,
+        address treasury_,
         address positionToken_,
         address acm_
     ) external initializer {
@@ -130,6 +136,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (oracle_ == address(0)) revert InvalidAddress();
         if (protocolShareReserve_ == address(0)) revert InvalidAddress();
         if (comptroller_ == address(0)) revert InvalidAddress();
+        if (treasury_ == address(0)) revert InvalidAddress();
         if (positionToken_ == address(0)) revert InvalidAddress();
 
         vaultImplementation = vaultImplementation_;
@@ -137,6 +144,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         oracle = oracle_;
         protocolShareReserve = protocolShareReserve_;
         comptroller = comptroller_;
+        treasury = treasury_;
         positionToken = IInstitutionPositionToken(positionToken_);
     }
 
@@ -414,6 +422,21 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (comptroller_ == address(0)) revert InvalidAddress();
         emit ComptrollerUpdated(comptroller, comptroller_);
         comptroller = comptroller_;
+    }
+
+    /**
+     * @notice Update treasury address for swept tokens.
+     * @param treasury_ New treasury address.
+     * @custom:error InvalidAddress if zero address.
+     * @custom:event TreasuryUpdated
+     */
+    function setTreasury(
+        address treasury_
+    ) external {
+        _checkAccessAllowed("setTreasury(address)");
+        if (treasury_ == address(0)) revert InvalidAddress();
+        emit TreasuryUpdated(treasury, treasury_);
+        treasury = treasury_;
     }
 
     // ──────────────────────────────────────────────────────────────────────

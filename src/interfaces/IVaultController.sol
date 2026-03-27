@@ -11,4 +11,7 @@ interface IVaultController {
 
     /// @notice Comptroller address for PSR integration.
     function comptroller() external view returns (address);
+
+    /// @notice Treasury address — recipient for swept tokens.
+    function treasury() external view returns (address);
 }

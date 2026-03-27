@@ -38,6 +38,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             address(oracle),
             address(psr),
             comptrollerAddr,
+            makeAddr("treasury"),
             address(posToken),
             address(acm)
         );
@@ -52,6 +53,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         address validOracle = makeAddr("oracle");
         address validPSR = makeAddr("psr");
         address validComp = makeAddr("comp");
+        address validTreasury = makeAddr("treasury");
         address validToken = makeAddr("token");
         address validAcm = address(acm);
 
@@ -61,7 +63,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (address(0), validAdapter, validOracle, validPSR, validComp, validToken, validAcm)
+                (address(0), validAdapter, validOracle, validPSR, validComp, validTreasury, validToken, validAcm)
             )
         );
 
@@ -71,7 +73,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (validImpl, address(0), validOracle, validPSR, validComp, validToken, validAcm)
+                (validImpl, address(0), validOracle, validPSR, validComp, validTreasury, validToken, validAcm)
             )
         );
 
@@ -81,7 +83,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (validImpl, validAdapter, address(0), validPSR, validComp, validToken, validAcm)
+                (validImpl, validAdapter, address(0), validPSR, validComp, validTreasury, validToken, validAcm)
             )
         );
 
@@ -91,7 +93,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (validImpl, validAdapter, validOracle, address(0), validComp, validToken, validAcm)
+                (validImpl, validAdapter, validOracle, address(0), validComp, validTreasury, validToken, validAcm)
             )
         );
 
@@ -101,7 +103,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (validImpl, validAdapter, validOracle, validPSR, address(0), validToken, validAcm)
+                (validImpl, validAdapter, validOracle, validPSR, address(0), validTreasury, validToken, validAcm)
             )
         );
 
@@ -111,7 +113,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             pa,
             abi.encodeCall(
                 InstitutionalVaultController.initialize,
-                (validImpl, validAdapter, validOracle, validPSR, validComp, address(0), validAcm)
+                (validImpl, validAdapter, validOracle, validPSR, validComp, validTreasury, address(0), validAcm)
             )
         );
     }

@@ -143,6 +143,7 @@ abstract contract VaultTestBase is Test {
                             address(oracle),
                             address(psr),
                             comptrollerAddr,
+                            makeAddr("treasury"),
                             address(posToken),
                             address(acm)
                         )

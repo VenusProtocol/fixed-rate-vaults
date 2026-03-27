@@ -11,21 +11,6 @@ import { InstitutionalConfig, InstitutionalRuntime, RiskConfig, LiquidationType 
 /// @notice Interface for the Institutional Fixed-Rate Loan Vault (ERC-4626 + collateral + borrowing + liquidation).
 interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // ──────────────────────────────────────────────────────────────────────
-    // Events
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @notice Emitted when tokens are swept from the vault by the controller.
-    event TokensSwept(address indexed token, address indexed recipient, uint256 amount);
-
-    // ──────────────────────────────────────────────────────────────────────
-    // Errors
-    // ──────────────────────────────────────────────────────────────────────
-
-    /// @notice Thrown when sweep() is called but there are no excess tokens to recover.
-    error NothingToSweep();
-    /// @notice Thrown when a repay or liquidation call is made with a zero amount.
-    error ZeroRepayAmount();
-    // ──────────────────────────────────────────────────────────────────────
     // Initialization
     // ──────────────────────────────────────────────────────────────────────
 
@@ -84,8 +69,9 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     function unpause() external;
 
     /**
-     * @notice Recovers any tokens stuck in the vault. Full balance is transferred to the controller.
+     * @notice Recovers any tokens stuck in the vault. Full balance is transferred to the treasury.
      * @param token Token address to sweep.
+     * @custom:error VaultNotClosed If the vault is still active.
      * @custom:error NothingToSweep If the token balance is zero.
      * @custom:event TokensSwept
      */

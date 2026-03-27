@@ -201,4 +201,12 @@ interface IInstitutionalVaultController is IVaultController {
     function setComptroller(
         address _comptroller
     ) external;
+
+    /**
+     * @notice Update treasury address for swept tokens.
+     * @param treasury_ New treasury address.
+     */
+    function setTreasury(
+        address treasury_
+    ) external;
 }

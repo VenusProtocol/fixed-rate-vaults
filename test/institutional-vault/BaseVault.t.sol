@@ -67,13 +67,16 @@ contract TestVault is BaseVault {
 contract VaultControllerStub {
     address public protocolShareReserve;
     address public comptroller;
+    address public treasury;
 
     constructor(
         address psr_,
-        address comptroller_
+        address comptroller_,
+        address treasury_
     ) {
         protocolShareReserve = psr_;
         comptroller = comptroller_;
+        treasury = treasury_;
     }
 
     // Forward vault lifecycle calls (close / pause).
@@ -125,7 +128,7 @@ contract BaseVaultTest is Test {
         psr = new MockPSR();
 
         address comptrollerAddr = makeAddr("comptroller");
-        mockVaultController = new VaultControllerStub(address(psr), comptrollerAddr);
+        mockVaultController = new VaultControllerStub(address(psr), comptrollerAddr, makeAddr("treasury"));
 
         _deployVault();
     }
@@ -875,23 +878,49 @@ contract BaseVaultTest is Test {
     // 2F — Misc Controller Functions
     // ──────────────────────────────────────────────────────────────────────
 
+    function _matureAndClose() internal {
+        _depositAndLock(MIN_CAP);
+        vm.prank(address(mockVaultController));
+        vault.claimRaisedFunds(address(this));
+
+        vm.warp(vault.runtime().lockEndTime + 1);
+        uint256 debt = vault.outstandingDebt();
+        supply.mint(address(this), debt);
+        supply.approve(address(vault), debt);
+        vault.repay(debt);
+        vault.updateVaultState();
+
+        vm.prank(address(mockVaultController));
+        mockVaultController.callVault(address(vault), abi.encodeCall(BaseVault.closeVault, ()));
+    }
+
     function test_sweep_nonSupplyToken() external {
+        _matureAndClose();
         uint256 amount = 500e18;
         extraToken.mint(address(vault), amount);
+        address treasuryAddr = mockVaultController.treasury();
 
         vm.expectEmit(true, true, false, true);
-        emit BaseVault.TokensSwept(address(extraToken), address(mockVaultController), amount);
+        emit BaseVault.TokensSwept(address(extraToken), treasuryAddr, amount);
 
         vm.prank(address(mockVaultController));
         mockVaultController.callVault(address(vault), abi.encodeCall(BaseVault.sweep, (address(extraToken))));
 
-        assertEq(extraToken.balanceOf(address(mockVaultController)), amount);
+        assertEq(extraToken.balanceOf(treasuryAddr), amount);
         assertEq(extraToken.balanceOf(address(vault)), 0);
     }
 
     function test_sweep_revertsIfNothingToSweep() external {
+        _matureAndClose();
         vm.prank(address(mockVaultController));
         vm.expectRevert(BaseVault.NothingToSweep.selector);
+        vault.sweep(address(extraToken));
+    }
+
+    function test_sweep_revertsIfVaultActive() external {
+        extraToken.mint(address(vault), 100e18);
+        vm.prank(address(mockVaultController));
+        vm.expectRevert(BaseVault.VaultNotClosed.selector);
         vault.sweep(address(extraToken));
     }
 
