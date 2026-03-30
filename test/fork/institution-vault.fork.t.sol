@@ -431,7 +431,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         uint256 minRequired = vault.institutionalRuntime().minimumCollateralRequired;
         uint256 totalCol = vault.institutionalRuntime().totalCollateralDeposited;
         uint256 withdrawable = totalCol - minRequired;
-        assertGt(withdrawable, 0);
+        assertEq(withdrawable, extraCollateral);
 
         vm.prank(institution);
         vault.withdrawCollateral(withdrawable);
@@ -496,8 +496,14 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         adapter.liquidate(address(vault), liqRepay);
         vm.stopPrank();
 
-        assertGt(collateral.balanceOf(liquidator), 0);
-        assertLe(collateral.balanceOf(liquidator), expectedSeize);
+        // LiquidationAdapter splits seized collateral: caller receives (totalSeized - protocolAmount).
+        uint256 li = vault.riskConfig().liquidationIncentive;
+        uint256 repayEquivalent = (expectedSeize * MANTISSA_ONE) / li;
+        uint256 incentiveAmount = expectedSeize - repayEquivalent;
+        uint256 protocolAmount = (incentiveAmount * PROTOCOL_LIQ_SHARE) / MANTISSA_ONE;
+        uint256 callerAmount = expectedSeize - protocolAmount;
+
+        assertEq(collateral.balanceOf(liquidator), callerAmount);
         assertEq(vault.outstandingDebt(), debt - liqRepay);
 
         _warpPastLock();
@@ -512,7 +518,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         _topUpCollateralAndLock();
         _claimFunds();
 
-        _setPrice(address(collateral), 0.4e18);
+        _setPrice(address(collateral), 0.7e18);
         _whitelistLiquidator();
 
         uint256 debtBefore = vault.outstandingDebt();
@@ -527,36 +533,28 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         uint256 debtAfter1 = vault.outstandingDebt();
         assertEq(debtAfter1, debtBefore - maxRepay1);
 
-        _setPrice(address(collateral), 0.4e18);
-
         (, uint256 shortfall) = vault.getVaultLiquidity();
-        if (shortfall > 0) {
-            uint256 maxRepay2 = (debtAfter1 * CLOSE_FACTOR) / MANTISSA_ONE;
-            uint256 collateralLeft = vault.institutionalRuntime().totalCollateralDeposited;
-            uint256 seizePreview = vault.calculateSeizeAmount(maxRepay2, LiquidationType.HF_BASED);
+        assertGt(shortfall, 0);
+        uint256 maxRepay2 = (debtAfter1 * CLOSE_FACTOR) / MANTISSA_ONE;
 
-            if (seizePreview <= collateralLeft) {
-                supply.mint(liquidator, maxRepay2);
-                vm.startPrank(liquidator);
-                supply.approve(address(adapter), maxRepay2);
-                adapter.liquidate(address(vault), maxRepay2);
-                vm.stopPrank();
+        supply.mint(liquidator, maxRepay2);
+        vm.startPrank(liquidator);
+        supply.approve(address(adapter), maxRepay2);
+        adapter.liquidate(address(vault), maxRepay2);
+        vm.stopPrank();
 
-                assertEq(vault.outstandingDebt(), debtAfter1 - maxRepay2);
-            }
-        }
+        assertEq(vault.outstandingDebt(), debtAfter1 - maxRepay2);
 
-        if (vault.getCollateralValueUSD() < vault.getDebtValueUSD() && vault.outstandingDebt() > 0) {
-            uint256 remainingDebt = vault.outstandingDebt();
-            uint256 totalInterest = _computeInterest(MAX_BORROW_CAP);
-            uint256 badDebtCoverage = remainingDebt > totalInterest ? remainingDebt - totalInterest : 0;
-            if (badDebtCoverage > 0) {
-                supply.mint(address(this), badDebtCoverage);
-                supply.approve(address(vault), badDebtCoverage);
-                vault.repayBadDebt(badDebtCoverage);
-            }
-            assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
-        }
+        assertLt(vault.getCollateralValueUSD(), vault.getDebtValueUSD());
+        assertGt(vault.outstandingDebt(), 0);
+
+        uint256 remainingDebt = vault.outstandingDebt();
+        uint256 totalInterest = _computeInterest(MAX_BORROW_CAP);
+        uint256 badDebtCoverage = remainingDebt - totalInterest;
+        supply.mint(address(this), badDebtCoverage);
+        supply.approve(address(vault), badDebtCoverage);
+        vault.repayBadDebt(badDebtCoverage);
+        assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
     }
 
     function test_fork_liquidation_overduePartialRepay() external {
@@ -588,9 +586,12 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         assertEq(uint8(vault.state()), uint8(VaultState.Matured));
 
         uint256 shares = vault.balanceOf(lender1);
-        vm.prank(lender1);
+        vm.startPrank(lender1);
+        uint256 balBefore = supply.balanceOf(lender1);
+        uint256 expectedAssets = vault.previewRedeem(shares);
         vault.redeem(shares, lender1, lender1);
-        assertGt(supply.balanceOf(lender1), 0);
+        vm.stopPrank();
+        assertEq(supply.balanceOf(lender1), balBefore + expectedAssets);
     }
 
     function test_fork_liquidation_overdueNoRepay() external {
@@ -616,12 +617,22 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         vault.updateVaultState();
         assertEq(uint8(vault.state()), uint8(VaultState.Matured));
 
-        assertGt(collateral.balanceOf(settler), 0);
+        // LiquidationAdapter splits totalSeized into caller vs protocol split.
+        uint256 expectedSeize = vault.calculateSeizeAmount(debt, LiquidationType.DEADLINE);
+        uint256 li = vault.riskConfig().latePenaltyRate;
+        uint256 repayEquivalent = (expectedSeize * MANTISSA_ONE) / li;
+        uint256 incentiveAmount = expectedSeize - repayEquivalent;
+        uint256 protocolAmount = (incentiveAmount * PROTOCOL_LIQ_SHARE) / MANTISSA_ONE;
+        uint256 callerAmount = expectedSeize - protocolAmount;
+        assertEq(collateral.balanceOf(settler), callerAmount);
 
         uint256 shares = vault.balanceOf(lender1);
-        vm.prank(lender1);
+        vm.startPrank(lender1);
+        uint256 balBefore = supply.balanceOf(lender1);
+        uint256 expectedAssets = vault.previewRedeem(shares);
         vault.redeem(shares, lender1, lender1);
-        assertGt(supply.balanceOf(lender1), MAX_BORROW_CAP);
+        vm.stopPrank();
+        assertEq(supply.balanceOf(lender1), balBefore + expectedAssets);
     }
 
     function test_fork_liquidation_badDebtRescue() external {
@@ -842,10 +853,10 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         _topUpCollateralAndLock();
         _claimFunds();
 
-        _setPrice(address(collateral), 0.97e18);
         (, uint256 shortfallBefore) = vault.getVaultLiquidity();
         assertEq(shortfallBefore, 0);
 
+        // update liquidation threshold mid lifecycle
         controller.setLiquidationThreshold(address(vault), 0.7e18);
         (, uint256 shortfallAfter) = vault.getVaultLiquidity();
         assertGt(shortfallAfter, 0);
@@ -855,7 +866,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         supply.mint(liquidator, repayAmt);
         vm.startPrank(liquidator);
         supply.approve(address(adapter), repayAmt);
-        adapter.liquidate(address(vault), repayAmt);
+        adapter.liquidate(address(vault), repayAmt); // able to liquidate
         vm.stopPrank();
     }
 
@@ -1147,7 +1158,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         _topUpCollateralAndLock();
         _claimFunds();
 
-        _setPrice(address(collateral), 0.7e18);
+        _setPrice(address(collateral), 0.8e18);
         _whitelistLiquidator();
 
         uint256 debt = vault.outstandingDebt();
@@ -1156,18 +1167,15 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
 
         adapter.setCloseFactor(1e18);
 
-        uint256 seizePreview = vault.calculateSeizeAmount(debt, LiquidationType.HF_BASED);
-        uint256 collateralBalance = vault.institutionalRuntime().totalCollateralDeposited;
+        supply.mint(liquidator, totalSend);
+        vm.startPrank(liquidator);
+        supply.approve(address(adapter), totalSend);
+        adapter.liquidate(address(vault), totalSend);
+        vm.stopPrank();
 
-        if (seizePreview <= collateralBalance) {
-            supply.mint(liquidator, totalSend);
-            vm.startPrank(liquidator);
-            supply.approve(address(adapter), totalSend);
-            adapter.liquidate(address(vault), totalSend);
-            vm.stopPrank();
-
-            assertGe(supply.balanceOf(liquidator), excess);
-        }
+        // Since repayAmount = debt + excess, InstitutionalLoanVault clamps actualRepay to `debt`,
+        // so LiquidationAdapter refunds exactly `excess` supply asset back to the caller.
+        assertEq(supply.balanceOf(liquidator), excess);
     }
 
     function test_fork_collateral_liquidationIncentiveSplit() external {
@@ -1274,9 +1282,9 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         uint256 interest = _computeInterest(MAX_BORROW_CAP);
         uint256 protocolFee = _computeProtocolFee(interest);
 
-        assertGt(protocolFee, 0);
-        assertGt(supply.balanceOf(psrAddress), 0);
-        assertApproxEqAbs(supply.balanceOf(psrAddress), protocolFee, 1);
+        uint256 expectedProtocolFee = (interest * RESERVE_FACTOR) / MANTISSA_ONE;
+        assertEq(protocolFee, expectedProtocolFee);
+        assertEq(supply.balanceOf(psrAddress), protocolFee);
     }
 
     function test_fork_lenderAccounting_protocolFee_partialInterest() external {
@@ -1295,17 +1303,13 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         uint256 remainingDebt = vault.outstandingDebt();
         uint256 totalInterest = _computeInterest(MAX_BORROW_CAP);
 
-        if (remainingDebt <= totalInterest) {
-            // repay bad debt with 1 wei to trigger shortfall
-            supply.mint(address(this), 1);
-            supply.approve(address(vault), 1);
-            vault.repayBadDebt(1);
-        } else {
-            uint256 badDebtCoverage = remainingDebt - totalInterest;
-            supply.mint(address(this), badDebtCoverage);
-            supply.approve(address(vault), badDebtCoverage);
-            vault.repayBadDebt(badDebtCoverage);
-        }
+        // Repay bad debt with either the exact coverage needed (when remainingDebt > totalInterest)
+        // or a minimal 1 wei (when remainingDebt <= totalInterest) to avoid underflow while still
+        // producing the shortfall liquidation path.
+        uint256 badDebtCoverage = remainingDebt > totalInterest ? (remainingDebt - totalInterest) : 1;
+        supply.mint(address(this), badDebtCoverage);
+        supply.approve(address(vault), badDebtCoverage);
+        vault.repayBadDebt(badDebtCoverage);
 
         assertEq(uint8(vault.state()), uint8(VaultState.Liquidated));
 
@@ -1831,7 +1835,12 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         vm.stopPrank();
 
         uint256 accrued = adapter.protocolShareAccrued(address(collateral));
-        assertGt(accrued, 0);
+        uint256 expectedSeize = vault.calculateSeizeAmount(repayAmt, LiquidationType.HF_BASED);
+        uint256 li = vault.riskConfig().liquidationIncentive;
+        uint256 repayEquivalent = (expectedSeize * MANTISSA_ONE) / li;
+        uint256 incentiveAmount = expectedSeize - repayEquivalent;
+        uint256 expectedProtocolAmount = (incentiveAmount * PROTOCOL_LIQ_SHARE) / MANTISSA_ONE;
+        assertEq(accrued, expectedProtocolAmount);
 
         // Make this deterministic: LiquidationAdapter does not try/catch PSR updates,
         // so we route sweeps into the local MockPSR (it will accept mock token addresses).
