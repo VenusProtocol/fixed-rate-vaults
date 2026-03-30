@@ -247,8 +247,9 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         uint256 withdrawable = totalCollateral - minRequired; // = 750k
 
         // Withdraw exactly the withdrawable buffer — should stay healthy at $1.
+        uint256 remainingAfter = vault.institutionalRuntime().totalCollateralDeposited - withdrawable;
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalLoanVault.CollateralReleased(institution, withdrawable);
+        emit InstitutionalLoanVault.CollateralWithdrawn(institution, withdrawable, remainingAfter);
 
         vm.prank(institution);
         vault.withdrawCollateral(withdrawable);
@@ -317,7 +318,7 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         uint256 totalCollateral = vault.institutionalRuntime().totalCollateralDeposited;
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalLoanVault.CollateralReleased(institution, totalCollateral);
+        emit InstitutionalLoanVault.CollateralWithdrawn(institution, totalCollateral, 0);
 
         vm.prank(institution);
         vault.withdrawCollateral(totalCollateral);
@@ -346,7 +347,7 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         uint256 totalCollateral = vault.institutionalRuntime().totalCollateralDeposited;
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalLoanVault.CollateralReleased(institution, totalCollateral);
+        emit InstitutionalLoanVault.CollateralWithdrawn(institution, totalCollateral, 0);
 
         vm.prank(institution);
         vault.withdrawCollateral(totalCollateral);
