@@ -57,6 +57,8 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     event VaultOpened(uint256 openEndTime);
+    event VaultLocked(uint256 totalRaised, uint256 lockEndTime);
+    event VaultFailed(uint256 totalRaised, uint256 minBorrowCap);
     event VaultLiquidated(uint256 available);
     event CollateralDeposited(uint256 amount, uint256 totalCollateral);
     event CollateralWithdrawn(address indexed positionHolder, uint256 amount, uint256 remaining);
@@ -165,7 +167,9 @@ contract InstitutionalLoanVault is BaseVault {
         _runtime.lockStartTime = openEnd;
         _runtime.lockEndTime = lockEnd;
         _runtime.settlementDeadline = lockEnd + _config.settlementWindow;
-        _enterFundraising(openEnd);
+        _runtime.isActive = true;
+        emit VaultOpened(openEnd);
+        _stateTransition(VaultState.Fundraising);
     }
 
     /**
@@ -197,7 +201,9 @@ contract InstitutionalLoanVault is BaseVault {
         _receiveRepayment(msg.sender, repayAmount);
 
         if (_runtime.totalDebt > _computeTotalInterest()) revert InsufficientRepayment();
-        _enterLiquidated(s);
+        _stateTransition(VaultState.Liquidated);
+        emit VaultLiquidated(IERC20(asset()).balanceOf(address(this)));
+        _settleProtocolShare();
     }
 
     /**
@@ -329,7 +335,7 @@ contract InstitutionalLoanVault is BaseVault {
         if (s == VaultState.WaitingForMargin) {
             uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA_ONE;
             if (_instRuntime.totalCollateralDeposited < marginAmount) revert InsufficientCollateral();
-            _enterMarginDeposited();
+            _stateTransition(VaultState.MarginDeposited);
         }
     }
 
@@ -494,52 +500,81 @@ contract InstitutionalLoanVault is BaseVault {
     // Internal — State-Changing
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev WaitingForMargin -> MarginDeposited.
-    function _enterMarginDeposited() internal {
-        _runtime.state = VaultState.MarginDeposited;
-        emit StateTransition(VaultState.WaitingForMargin, VaultState.MarginDeposited, block.timestamp);
-    }
-
     /**
-     * @dev MarginDeposited -> Fundraising. Activates the vault and emits opening events.
-     * @param openEnd Timestamp when the fundraising window closes.
+     * @dev Full state machine for the institutional vault lifecycle.
+     *      Handles all time-based and condition-based auto-transitions.
      */
-    function _enterFundraising(
-        uint40 openEnd
-    ) internal {
-        _runtime.state = VaultState.Fundraising;
-        _runtime.isActive = true;
-        emit VaultOpened(openEnd);
-        emit StateTransition(VaultState.MarginDeposited, VaultState.Fundraising, block.timestamp);
+    function _checkAndAdvanceState() internal override {
+        VaultState s = _runtime.state;
+        uint256 currentTime = block.timestamp;
+
+        // Fundraising -> Lock (collateral sufficient) or Failed
+        if (s == VaultState.Fundraising) {
+            if (currentTime < _runtime.openEndTime) return;
+            uint256 totalRaised = _runtime.totalRaised;
+            if (
+                totalRaised >= _config.minBorrowCap
+                    && _instRuntime.totalCollateralDeposited >= _instConfig.idealCollateralAmount
+            ) {
+                _enterLock(totalRaised);
+            } else {
+                _enterFailed(totalRaised);
+            }
+            return;
+        }
+
+        uint256 lockEnd = _runtime.lockEndTime;
+
+        // Lock -> PendingSettlement (falls through to check Matured/SettlementDeadlineExceeded)
+        if (s == VaultState.Lock && currentTime >= lockEnd) {
+            _stateTransition(VaultState.PendingSettlement);
+            s = VaultState.PendingSettlement; // update cache to fall through into PendingSettlement check below
+        }
+
+        // PendingSettlement -> Matured or SettlementDeadlineExceeded
+        if (s == VaultState.PendingSettlement) {
+            uint256 debt = _outstandingDebt();
+            if (debt == 0) {
+                _enterMatured();
+                return;
+            }
+            if (currentTime > _runtime.settlementDeadline && debt > 0) {
+                _stateTransition(VaultState.SettlementDeadlineExceeded);
+                return;
+            }
+        }
+
+        // SettlementDeadlineExceeded -> Matured
+        if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0) {
+            _enterMatured();
+        }
     }
 
     /**
-     * @dev Fundraising -> Lock. Gates on collateral sufficiency — if collateral < idealCollateralAmount,
-     *      falls through to _enterFailed (institution default). Otherwise initialises totalDebt,
-     *      collateral floor, and valuation snapshot.
-     * @param totalRaised Total supply assets raised during fundraising.
+     * @dev Fundraising -> Lock. Initialises totalDebt, computes and stores minimum collateral
+     *      required and its USD valuation scaled to the actual amount raised.
      */
     function _enterLock(
         uint256 totalRaised
-    ) internal override {
-        if (_instRuntime.totalCollateralDeposited < _instConfig.idealCollateralAmount) {
-            _enterFailed(totalRaised);
-            return;
-        }
-        super._enterLock(totalRaised);
+    ) internal {
+        _stateTransition(VaultState.Lock);
+        _runtime.totalDebt = _computeTotalInterest();
         uint256 idealCollateral = _instConfig.idealCollateralAmount;
         _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
         _instRuntime.idealCollateralValuation = _getCollateralValueUSD(_instRuntime.minimumCollateralRequired);
+        emit VaultLocked(totalRaised, _runtime.lockEndTime);
     }
 
     /**
-     * @dev Fundraising -> Failed. Sets settlementAmount and confiscates margin on institution default.
-     * @param totalRaised Total supply assets raised during fundraising.
+     * @dev Fundraising -> Failed. Sets settlementAmount to totalRaised (no protocol fee).
+     *      If raised >= minBorrowCap (collateral shortfall caused failure), confiscates margin.
      */
     function _enterFailed(
         uint256 totalRaised
-    ) internal override {
-        super._enterFailed(totalRaised);
+    ) internal {
+        _runtime.settlementAmount = totalRaised;
+        _stateTransition(VaultState.Failed);
+        emit VaultFailed(totalRaised, _config.minBorrowCap);
         if (totalRaised >= _config.minBorrowCap) {
             uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA_ONE;
             _instRuntime.institutionDefaulted = true;
@@ -549,16 +584,10 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @dev Transitions to Liquidated. Emits VaultLiquidated with pre-settlement balance
-     *      and triggers protocol fee settlement.
-     * @param from Source state.
+     * @dev Transitions to Matured. Triggers protocol fee settlement.
      */
-    function _enterLiquidated(
-        VaultState from
-    ) internal {
-        _runtime.state = VaultState.Liquidated;
-        emit StateTransition(from, VaultState.Liquidated, block.timestamp);
-        emit VaultLiquidated(IERC20(asset()).balanceOf(address(this)));
+    function _enterMatured() internal {
+        _stateTransition(VaultState.Matured);
         _settleProtocolShare();
     }
 

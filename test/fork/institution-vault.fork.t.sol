@@ -326,7 +326,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         vm.expectEmit(true, true, false, false, address(vault));
         emit BaseVault.StateTransition(VaultState.Fundraising, VaultState.Failed, 0);
         vm.expectEmit(address(vault));
-        emit BaseVault.VaultFailed(100_000e18, MIN_BORROW_CAP);
+        emit InstitutionalLoanVault.VaultFailed(100_000e18, MIN_BORROW_CAP);
         vault.updateVaultState();
 
         assertEq(uint8(vault.state()), uint8(VaultState.Failed));

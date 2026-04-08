@@ -449,7 +449,7 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         vm.warp(vault.runtime().openEndTime + 1);
 
         vm.expectEmit(false, false, false, true);
-        emit BaseVault.VaultFailed(MIN_BORROW_CAP, MIN_BORROW_CAP);
+        emit InstitutionalLoanVault.VaultFailed(MIN_BORROW_CAP, MIN_BORROW_CAP);
         vm.expectEmit(false, false, false, true);
         emit InstitutionalLoanVault.MarginConfiscated(MARGIN_AMOUNT);
 
@@ -477,6 +477,100 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         assertEq(uint8(vault.state()), uint8(VaultState.Failed));
         assertFalse(vault.institutionalRuntime().institutionDefaulted);
         assertEq(vault.institutionalRuntime().confiscatedMarginRemaining, 0);
+    }
+
+    function test_lockToPendingSettlement() external {
+        _openVault();
+        _lockVault();
+        vm.prank(institution);
+        vault.claimRaisedFunds();
+
+        uint256 lockEnd = vault.runtime().lockEndTime;
+        vm.warp(lockEnd + 1);
+
+        vm.expectEmit(true, true, false, true);
+        emit BaseVault.StateTransition(VaultState.Lock, VaultState.PendingSettlement, lockEnd + 1);
+
+        vault.updateVaultState();
+
+        assertEq(uint8(vault.state()), uint8(VaultState.PendingSettlement));
+    }
+
+    function test_pendingSettlementToMatured_onFullRepay() external {
+        _openVault();
+        _lockVault();
+        vm.prank(institution);
+        vault.claimRaisedFunds();
+
+        uint256 lockEnd = vault.runtime().lockEndTime;
+        vm.warp(lockEnd + 1);
+        vault.updateVaultState(); // Lock -> PendingSettlement
+
+        uint256 debt = vault.outstandingDebt();
+        supply.mint(institution, debt);
+        vm.startPrank(institution);
+        supply.approve(address(vault), debt);
+
+        // Transition fires inside repay: _checkAndAdvanceState runs after _receiveRepayment sees debt == 0.
+        vm.expectEmit(true, true, false, true);
+        emit BaseVault.StateTransition(VaultState.PendingSettlement, VaultState.Matured, block.timestamp);
+
+        vault.repay(debt);
+        vm.stopPrank();
+
+        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
+    }
+
+    function test_pendingSettlementToSettlementDeadlineExceeded() external {
+        _openVault();
+        _lockVault();
+        vm.prank(institution);
+        vault.claimRaisedFunds();
+
+        vm.warp(vault.runtime().settlementDeadline + 1);
+        vault.updateVaultState();
+
+        assertEq(uint8(vault.state()), uint8(VaultState.SettlementDeadlineExceeded));
+    }
+
+    function test_settlementDeadlineExceededToMatured() external {
+        _openVault();
+        _lockVault();
+        vm.prank(institution);
+        vault.claimRaisedFunds();
+
+        vm.warp(vault.runtime().settlementDeadline + 1);
+        vault.updateVaultState(); // Lock -> PendingSettlement -> SettlementDeadlineExceeded
+
+        uint256 debt = vault.outstandingDebt();
+        supply.mint(institution, debt);
+        vm.startPrank(institution);
+        supply.approve(address(vault), debt);
+        vault.repay(debt); // fires _checkAndAdvanceState: debt == 0 -> Matured
+        vm.stopPrank();
+
+        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
+    }
+
+    function test_stateCannotGoBackward_fromMatured() external {
+        _openVault();
+        _lockVault();
+        vm.prank(institution);
+        vault.claimRaisedFunds();
+
+        uint256 lockEnd = vault.runtime().lockEndTime;
+        vm.warp(lockEnd + 1);
+
+        uint256 debt = vault.outstandingDebt();
+        supply.mint(institution, debt);
+        vm.startPrank(institution);
+        supply.approve(address(vault), debt);
+        vault.repay(debt); // -> Matured
+        vm.stopPrank();
+
+        vault.updateVaultState(); // no-op
+        vault.updateVaultState(); // no-op
+        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
     }
 
     function test_failed_institutionDefault_marginCompensation() external {

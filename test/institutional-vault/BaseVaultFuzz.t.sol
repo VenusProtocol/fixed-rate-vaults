@@ -50,6 +50,50 @@ contract FuzzTestVault is BaseVault {
     ) external onlyController {
         _claimRaisedFunds(recipient);
     }
+
+    /// @dev Minimal state machine for BaseVault mechanics tests (no institutional collateral check).
+    function _checkAndAdvanceState() internal override {
+        VaultState s = _runtime.state;
+        uint256 currentTime = block.timestamp;
+
+        if (s == VaultState.Fundraising) {
+            if (currentTime < _runtime.openEndTime) return;
+            uint256 totalRaised = _runtime.totalRaised;
+            if (totalRaised >= _config.minBorrowCap) {
+                _stateTransition(VaultState.Lock);
+                _runtime.totalDebt = _computeTotalInterest();
+            } else {
+                _runtime.settlementAmount = totalRaised;
+                _stateTransition(VaultState.Failed);
+            }
+            return;
+        }
+
+        uint256 lockEnd = _runtime.lockEndTime;
+
+        if (s == VaultState.Lock && currentTime >= lockEnd) {
+            _stateTransition(VaultState.PendingSettlement);
+            s = VaultState.PendingSettlement;
+        }
+
+        if (s == VaultState.PendingSettlement) {
+            uint256 debt = _outstandingDebt();
+            if (debt == 0) {
+                _stateTransition(VaultState.Matured);
+                _settleProtocolShare();
+                return;
+            }
+            if (currentTime > _runtime.settlementDeadline) {
+                _stateTransition(VaultState.SettlementDeadlineExceeded);
+                return;
+            }
+        }
+
+        if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0) {
+            _stateTransition(VaultState.Matured);
+            _settleProtocolShare();
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

@@ -52,6 +52,50 @@ contract TestVault is BaseVault {
         _claimRaisedFunds(recipient);
     }
 
+    /// @dev Minimal state machine for BaseVault mechanics tests (no institutional collateral check).
+    function _checkAndAdvanceState() internal override {
+        VaultState s = _runtime.state;
+        uint256 currentTime = block.timestamp;
+
+        if (s == VaultState.Fundraising) {
+            if (currentTime < _runtime.openEndTime) return;
+            uint256 totalRaised = _runtime.totalRaised;
+            if (totalRaised >= _config.minBorrowCap) {
+                _stateTransition(VaultState.Lock);
+                _runtime.totalDebt = _computeTotalInterest();
+            } else {
+                _runtime.settlementAmount = totalRaised;
+                _stateTransition(VaultState.Failed);
+            }
+            return;
+        }
+
+        uint256 lockEnd = _runtime.lockEndTime;
+
+        if (s == VaultState.Lock && currentTime >= lockEnd) {
+            _stateTransition(VaultState.PendingSettlement);
+            s = VaultState.PendingSettlement;
+        }
+
+        if (s == VaultState.PendingSettlement) {
+            uint256 debt = _outstandingDebt();
+            if (debt == 0) {
+                _stateTransition(VaultState.Matured);
+                _settleProtocolShare();
+                return;
+            }
+            if (currentTime > _runtime.settlementDeadline) {
+                _stateTransition(VaultState.SettlementDeadlineExceeded);
+                return;
+            }
+        }
+
+        if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0) {
+            _stateTransition(VaultState.Matured);
+            _settleProtocolShare();
+        }
+    }
+
     /// @dev Test-only helper: forces vault directly to Matured and runs settlement.
     ///      Used to test _settleProtocolShare behaviour when debt > 0 prevents normal auto-transition.
     function forceSettle() external {
@@ -326,130 +370,7 @@ contract BaseVaultTest is Test {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // 2B — State Machine
-    // ──────────────────────────────────────────────────────────────────────
-
-    function test_fundraisingToLock_atMinCap() external {
-        uint256 raised = MIN_CAP;
-        _mintAndDeposit(lender1, raised);
-
-        uint256 expectedInterest = _computeInterest(raised);
-
-        // Warp first so block.timestamp matches what the state machine will record.
-        vm.warp(vault.runtime().openEndTime + 1);
-
-        vm.expectEmit(true, true, false, true);
-        emit BaseVault.StateTransition(VaultState.Fundraising, VaultState.Lock, block.timestamp);
-        vm.expectEmit(false, false, false, true);
-        emit BaseVault.VaultLocked(raised, vault.runtime().lockEndTime);
-
-        vault.updateVaultState();
-
-        assertEq(uint8(vault.state()), uint8(VaultState.Lock));
-        assertEq(vault.runtime().totalDebt, expectedInterest);
-    }
-
-    function test_fundraisingToFailed_belowMinCap() external {
-        // No deposits → raised = 0 < minCap.
-        vm.expectEmit(true, true, false, false);
-        emit BaseVault.StateTransition(VaultState.Fundraising, VaultState.Failed, block.timestamp + 1);
-
-        vm.warp(vault.runtime().openEndTime + 1);
-        vault.updateVaultState();
-
-        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
-        assertEq(vault.runtime().settlementAmount, 0);
-    }
-
-    function test_lockToPendingSettlement() external {
-        _depositAndLock(MIN_CAP);
-
-        uint256 lockEnd = vault.runtime().lockEndTime;
-        vm.warp(lockEnd + 1);
-
-        vm.expectEmit(true, true, false, false);
-        emit BaseVault.StateTransition(VaultState.Lock, VaultState.PendingSettlement, lockEnd + 1);
-
-        vault.updateVaultState();
-
-        assertEq(uint8(vault.state()), uint8(VaultState.PendingSettlement));
-    }
-
-    function test_pendingSettlementToMatured_onFullRepay() external {
-        _depositAndLock(MIN_CAP);
-
-        // Claim funds → institution owes principal + interest.
-        vm.prank(address(mockVaultController));
-        vault.claimRaisedFunds(address(this));
-
-        // Warp past lock end.
-        vm.warp(vault.runtime().lockEndTime + 1);
-        vault.updateVaultState(); // now PendingSettlement
-
-        uint256 debt = vault.outstandingDebt();
-        supply.mint(address(this), debt);
-        supply.approve(address(vault), debt);
-
-        // State transition PendingSettlement -> Matured fires inside repay (via _checkAndAdvanceState).
-        vm.expectEmit(true, true, false, false);
-        emit BaseVault.StateTransition(VaultState.PendingSettlement, VaultState.Matured, block.timestamp);
-
-        vault.repay(debt);
-
-        vault.updateVaultState(); // no-op: already Matured
-
-        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
-    }
-
-    function test_pendingSettlementToSettlementDeadlineExceeded() external {
-        _depositAndLock(MIN_CAP);
-        vm.prank(address(mockVaultController));
-        vault.claimRaisedFunds(address(this));
-
-        // Warp past settlement deadline with debt outstanding.
-        vm.warp(vault.runtime().settlementDeadline + 1);
-        vault.updateVaultState();
-
-        assertEq(uint8(vault.state()), uint8(VaultState.SettlementDeadlineExceeded));
-    }
-
-    function test_settlementDeadlineExceededToMatured() external {
-        _depositAndLock(MIN_CAP);
-        vm.prank(address(mockVaultController));
-        vault.claimRaisedFunds(address(this));
-
-        vm.warp(vault.runtime().settlementDeadline + 1);
-        vault.updateVaultState(); // SettlementDeadlineExceeded
-
-        uint256 debt = vault.outstandingDebt();
-        supply.mint(address(this), debt);
-        supply.approve(address(vault), debt);
-        vault.repay(debt);
-
-        vault.updateVaultState();
-
-        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
-    }
-
-    function test_stateCannotGoBackward_fromMatured() external {
-        _depositAndLock(MIN_CAP);
-        vm.prank(address(mockVaultController));
-        vault.claimRaisedFunds(address(this));
-
-        vm.warp(vault.runtime().lockEndTime + 1);
-        uint256 debt = vault.outstandingDebt();
-        supply.mint(address(this), debt);
-        supply.approve(address(vault), debt);
-        vault.repay(debt);
-        vault.updateVaultState(); // Matured
-
-        // Calling updateVaultState again must not change state.
-        vault.updateVaultState();
-        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // 2C — Settlement (_settleProtocolShare)
+    // 2B — Settlement (_settleProtocolShare)
     // ──────────────────────────────────────────────────────────────────────
 
     function test_settlement_fullRepayment() external {
