@@ -314,6 +314,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         // Refund excess supply asset if any
         if (actualRepay < repayAmount) {
             supplyAsset.safeTransfer(msg.sender, repayAmount - actualRepay);
+            supplyAsset.forceApprove(vault, 0);
         }
 
         // Split seized collateral

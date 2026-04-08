@@ -72,6 +72,7 @@ contract InstitutionalLoanVault is BaseVault {
     // Errors
     // ──────────────────────────────────────────────────────────────────────
 
+    error ZeroAddress();
     error InsufficientCollateral();
     error NotPositionHolder();
     error PositionTokenIdNotSet();
@@ -141,6 +142,7 @@ contract InstitutionalLoanVault is BaseVault {
         _config = config_;
         _instConfig = instConfig_;
         _riskConfig = riskConfig_;
+        if (liquidationAdapter_ == address(0)) revert ZeroAddress();
         positionToken = positionToken_;
         liquidationAdapter = liquidationAdapter_;
         _runtime.state = VaultState.WaitingForMargin;

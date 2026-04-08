@@ -262,6 +262,21 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
+     * @notice Recovers stuck tokens from a vault to treasury.
+     * @param vault Vault address.
+     * @param token Token address to sweep.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function sweep(
+        address vault,
+        address token
+    ) external {
+        _checkAccessAllowed("sweep(address,address)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        IInstitutionalLoanVault(vault).sweep(token);
+    }
+
+    /**
      * @notice Approves transfer of the vault's position token.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.

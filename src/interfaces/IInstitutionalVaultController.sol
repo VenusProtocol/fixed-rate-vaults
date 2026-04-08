@@ -57,6 +57,17 @@ interface IInstitutionalVaultController is IVaultController {
     ) external;
 
     /**
+     * @notice Recovers stuck tokens from a vault to treasury.
+     * @param vault Vault address.
+     * @param token Token address to sweep.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function sweep(
+        address vault,
+        address token
+    ) external;
+
+    /**
      * @notice Partial pause — blocks general operations; repay and liquidation remain available.
      * @param vault Vault address to pause.
      */
