@@ -79,9 +79,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
     event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
-    event LiquidationThresholdUpdated(address indexed vault, uint256 oldLT, uint256 newLT);
-    event LiquidationIncentiveUpdated(address indexed vault, uint256 oldLI, uint256 newLI);
-    event LatePenaltyRateUpdated(address indexed vault, uint256 oldRate, uint256 newRate);
+    event LiquidationThresholdUpdated(address indexed vault, uint256 newLT);
+    event LiquidationIncentiveUpdated(address indexed vault, uint256 newLI);
+    event LatePenaltyRateUpdated(address indexed vault, uint256 newRate);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -319,8 +319,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidLiquidationThreshold();
-        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
-        emit LiquidationThresholdUpdated(vault, rc.liquidationThreshold, newLT);
+        emit LiquidationThresholdUpdated(vault, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
 
@@ -339,8 +338,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= MANTISSA_ONE || newLI > MANTISSA_ONE_AND_HALF) revert InvalidLiquidationIncentive();
-        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
-        emit LiquidationIncentiveUpdated(vault, rc.liquidationIncentive, newLI);
+        emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
 
@@ -359,8 +357,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= MANTISSA_ONE || newRate > MANTISSA_ONE_AND_HALF) revert InvalidLatePenaltyRate();
-        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
-        emit LatePenaltyRateUpdated(vault, rc.latePenaltyRate, newRate);
+        emit LatePenaltyRateUpdated(vault, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
 
