@@ -108,14 +108,16 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Deactivates vault. Vault stays in terminal state; isActive flag set to false.
+     * @notice Transitions vault to Closed state. All operations are blocked after this point.
+     *         Governance should only call this once all suppliers have withdrawn their funds.
      * @custom:error InvalidState If vault is not in a terminal state (Matured/Failed/Liquidated).
-     * @custom:event VaultClosed Emitted with the terminal state when the vault is deactivated.
+     * @custom:event StateTransition Emitted for the terminal state -> Closed transition.
+     * @custom:event VaultClosed Emitted with the previous terminal state.
      */
     function closeVault() external onlyController {
         VaultState s = _runtime.state;
         if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
-        _runtime.isActive = false;
+        _stateTransition(VaultState.Closed);
         emit VaultClosed(s);
     }
 
@@ -228,8 +230,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         address receiver
     ) public override returns (uint256 shares) {
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
+        VaultState s = _checkAndAdvanceState();
+        if (s != VaultState.Fundraising) revert InvalidState();
         uint256 maxAllowed = maxDeposit(receiver);
         uint256 assetsClamped = assets > maxAllowed ? maxAllowed : assets;
         if (assetsClamped == 0) revert ExceedsMaxCap();
@@ -250,8 +252,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 shares,
         address receiver
     ) public override returns (uint256 assets) {
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Fundraising) revert InvalidState();
+        VaultState s = _checkAndAdvanceState();
+        if (s != VaultState.Fundraising) revert InvalidState();
         uint256 maxSharesAllowed = maxMint(receiver);
         uint256 sharesClamped = shares > maxSharesAllowed ? maxSharesAllowed : shares;
         if (sharesClamped == 0) revert ExceedsMaxCap();
@@ -275,8 +277,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address receiver,
         address owner
     ) public override returns (uint256 shares) {
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
         uint256 maxAssets = maxWithdraw(owner);
         if (assets > maxAssets) revert ExceedsMaxCap();
@@ -300,8 +301,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address receiver,
         address owner
     ) public override returns (uint256 assets) {
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.Matured && s != VaultState.Failed && s != VaultState.Liquidated) revert InvalidState();
         uint256 maxShares = maxRedeem(owner);
         if (shares > maxShares) revert ExceedsMaxCap();
@@ -414,8 +414,9 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     /**
      * @dev Hook for time-based and condition-based auto-transitions. Called at the start of every
      *      state-changing external function. No-op in base — subcontracts own their state machine.
+     * @return Current vault state after any transitions are applied.
      */
-    function _checkAndAdvanceState() internal virtual { }
+    function _checkAndAdvanceState() internal virtual returns (VaultState) { }
 
     // ──────────────────────────────────────────────────────────────────────
     // Internal — State Entry Functions (state-changing)
@@ -512,7 +513,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address owner,
         uint256 assets,
         uint256 shares
-    ) internal virtual override nonReentrant {
+    ) internal virtual override nonReentrant whenNotCompletelyPaused {
         super._withdraw(caller, receiver, owner, assets, shares);
         _runtime.settlementAmount -= assets;
         _afterWithdrawHook(receiver, shares);
@@ -596,15 +597,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
      *      to PendingSettlement and this function becomes inaccessible. The supply asset stays in the vault
      *      and the institution still owes only the interest portion (totalDebt = interest, unchanged).
      * @param recipient Address to receive the raised funds.
-     * @custom:error InvalidState if vault is not in Lock state.
+     * @custom:error InvalidState From _beforeClaimRaisedFunds: if the state check fails.
      * @custom:error AlreadyWithdrawn if funds already claimed.
      * @custom:event RaisedFundsClaimed
      */
     function _claimRaisedFunds(
         address recipient
     ) internal {
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.Lock) revert InvalidState();
+        _beforeClaimRaisedFunds();
         if (_runtime.fundsWithdrawn) revert AlreadyWithdrawn();
 
         IERC20 supplyToken = IERC20(asset());
@@ -612,7 +612,8 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         _runtime.fundsWithdrawn = true;
         _runtime.totalDebt += amount;
         supplyToken.safeTransfer(recipient, amount);
-
+        _checkAndAdvanceState();
+        
         emit RaisedFundsClaimed(amount);
     }
 
@@ -632,4 +633,14 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address receiver,
         uint256 shares
     ) internal virtual { }
+
+    /**
+     * @dev Hook called at the start of _claimRaisedFunds to validate vault state.
+     *      Default implementation requires Lock state.
+     *      Override in subcontracts to enforce a different state requirement.
+     * @custom:error InvalidState If the vault is not in the required state.
+     */
+    function _beforeClaimRaisedFunds() internal virtual {
+        if (_runtime.state != VaultState.Lock) revert InvalidState();
+    }
 }

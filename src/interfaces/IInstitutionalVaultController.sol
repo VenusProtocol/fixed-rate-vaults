@@ -17,6 +17,8 @@ interface IInstitutionalVaultController is IVaultController {
      * @param _config Shared vault configuration (asset, rates, caps, timing).
      * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
      * @param _riskConfig Risk parameters.
+     * @param _name ERC-20 share token name for the deployed vault.
+     * @param _symbol ERC-20 share token symbol for the deployed vault.
      * @return vault Deployed vault address.
      * @custom:error InvalidConfig If any config validation fails.
      * @custom:event VaultCreated Emitted with vault and institution addresses.
@@ -24,7 +26,9 @@ interface IInstitutionalVaultController is IVaultController {
     function createVault(
         VaultConfig calldata _config,
         InstitutionalConfig calldata _instConfig,
-        RiskConfig calldata _riskConfig
+        RiskConfig calldata _riskConfig,
+        string calldata _name,
+        string calldata _symbol
     ) external returns (address vault);
 
     /**
@@ -49,7 +53,7 @@ interface IInstitutionalVaultController is IVaultController {
     ) external;
 
     /**
-     * @notice Sets isActive = false on vault.
+     * @notice Transitions vault to Closed state. All operations are blocked after this point.
      * @param vault Vault address to close.
      */
     function closeVault(
@@ -168,6 +172,9 @@ interface IInstitutionalVaultController is IVaultController {
 
     /// @notice Venus ResilientOracle address.
     function oracle() external view returns (address);
+
+    /// @notice LiquidationAdapter contract address.
+    function liquidationAdapter() external view returns (address);
 
     // ──────────────────────────────────────────────────────────────────────
     // Admin Setters

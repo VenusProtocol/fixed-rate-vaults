@@ -69,14 +69,13 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         RiskConfig memory rc = _buildRiskConfig();
 
         vm.expectRevert("Initializable: contract is already initialized");
-        vault.initialize(cfg, instCfg, rc, IInstitutionPositionToken(address(posToken)), address(adapter));
+        vault.initialize(cfg, instCfg, rc, IInstitutionPositionToken(address(posToken)), "Inst Vault", "IV");
     }
 
     function test_openVault_byController() external {
         _openVault();
 
         assertEq(uint8(vault.state()), uint8(VaultState.Fundraising));
-        assertTrue(vault.runtime().isActive);
         assertGt(vault.runtime().openEndTime, 0);
         assertGt(vault.runtime().lockEndTime, vault.runtime().openEndTime);
         assertGt(vault.runtime().settlementDeadline, vault.runtime().lockEndTime);
@@ -1466,7 +1465,6 @@ contract CrossDecimalLiquidationTest is Test {
                         InstitutionalVaultController.initialize,
                         (
                             address(vaultImpl),
-                            address(1),
                             address(oracle),
                             address(psr),
                             comptrollerAddr,
@@ -1486,14 +1484,7 @@ contract CrossDecimalLiquidationTest is Test {
                     proxyAdmin,
                     abi.encodeCall(
                         LiquidationAdapter.initialize,
-                        (
-                            address(controller),
-                            address(psr),
-                            comptrollerAddr,
-                            PROTOCOL_LIQ_SHARE,
-                            CLOSE_FACTOR,
-                            address(acm)
-                        )
+                        (address(controller), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
                     )
                 )
             )
@@ -1509,7 +1500,7 @@ contract CrossDecimalLiquidationTest is Test {
     function _grantAllPermissions() internal {
         string[14] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
-            "createVault(VaultConfig,InstitutionalConfig,RiskConfig)",
+            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
@@ -1533,16 +1524,14 @@ contract CrossDecimalLiquidationTest is Test {
             acm.giveCallPermission(address(0), controllerSetterSigs[i], admin);
         }
 
-        string[7] memory adapterSigs = [
+        string[5] memory adapterSigs = [
             "setLiquidatorWhitelist(address,bool)",
             "setSettlerWhitelist(address,bool)",
             "setProtocolLiquidationShare(uint256)",
             "setCloseFactor(uint256)",
-            "setProtocolShareReserve(address)",
-            "setComptroller(address)",
             "sweepProtocolShareToReserve(address)"
         ];
-        for (uint256 i; i < 7; ++i) {
+        for (uint256 i; i < 5; ++i) {
             acm.giveCallPermission(address(0), adapterSigs[i], admin);
         }
     }
@@ -1571,7 +1560,7 @@ contract CrossDecimalLiquidationTest is Test {
         RiskConfig memory rc =
             RiskConfig({ liquidationThreshold: LT, liquidationIncentive: LI, latePenaltyRate: LATE_PENALTY_RATE });
 
-        address vaultAddr = controller.createVault(cfg, instCfg, rc);
+        address vaultAddr = controller.createVault(cfg, instCfg, rc, "Inst Vault 6D", "IV6");
         vault = InstitutionalLoanVault(vaultAddr);
     }
 

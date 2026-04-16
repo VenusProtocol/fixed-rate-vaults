@@ -111,7 +111,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /**
      * @notice Initializes the controller proxy.
      * @param vaultImplementation_ InstitutionalLoanVault implementation for cloning.
-     * @param liquidationAdapter_ LiquidationAdapter address.
      * @param oracle_ Venus ResilientOracle address.
      * @param protocolShareReserve_ PSR address.
      * @param comptroller_ Comptroller address for PSR.
@@ -121,7 +120,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      */
     function initialize(
         address vaultImplementation_,
-        address liquidationAdapter_,
         address oracle_,
         address protocolShareReserve_,
         address comptroller_,
@@ -132,7 +130,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         __AccessControlled_init(acm_);
 
         if (vaultImplementation_ == address(0)) revert InvalidAddress();
-        if (liquidationAdapter_ == address(0)) revert InvalidAddress();
         if (oracle_ == address(0)) revert InvalidAddress();
         if (protocolShareReserve_ == address(0)) revert InvalidAddress();
         if (comptroller_ == address(0)) revert InvalidAddress();
@@ -140,7 +137,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (positionToken_ == address(0)) revert InvalidAddress();
 
         vaultImplementation = vaultImplementation_;
-        liquidationAdapter = liquidationAdapter_;
         oracle = oracle_;
         protocolShareReserve = protocolShareReserve_;
         comptroller = comptroller_;
@@ -162,15 +158,19 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param _vaultConfig Shared vault configuration (asset, rates, caps, timing).
      * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
      * @param _riskConfig Risk parameters.
+     * @param _name ERC-20 share token name for the deployed vault.
+     * @param _symbol ERC-20 share token symbol for the deployed vault.
      * @return vault Deployed vault address.
      * @custom:event VaultCreated
      */
     function createVault(
         VaultConfig calldata _vaultConfig,
         InstitutionalConfig calldata _instConfig,
-        RiskConfig calldata _riskConfig
+        RiskConfig calldata _riskConfig,
+        string calldata _name,
+        string calldata _symbol
     ) external returns (address vault) {
-        _checkAccessAllowed("createVault(VaultConfig,InstitutionalConfig,RiskConfig)");
+        _checkAccessAllowed("createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)");
         _validateVaultConfig(_vaultConfig, _instConfig, _riskConfig);
 
         address institution = _instConfig.institutionOperator;
@@ -186,7 +186,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         // Assemble institutional config with tokenId and initialize
         InstitutionalConfig memory assembledInstConfig = _assembleInstConfig(_instConfig, tokenId);
         IInstitutionalLoanVault(vault)
-            .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, liquidationAdapter);
+            .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, _name, _symbol);
 
         // Register
         institutionNonce[institution]++;
@@ -249,7 +249,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
-     * @notice Sets isActive = false on vault.
+     * @notice Transitions vault to Closed state. All operations are blocked after this point.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */

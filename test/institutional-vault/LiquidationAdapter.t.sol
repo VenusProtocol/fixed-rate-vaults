@@ -22,17 +22,13 @@ contract LiquidationAdapterTest is VaultTestBase {
 
     function test_initialize_setsAllParams() external {
         assertEq(adapter.vaultController(), address(controller));
-        assertEq(adapter.protocolShareReserve(), address(psr));
-        assertEq(adapter.comptroller(), comptrollerAddr);
         assertEq(adapter.protocolLiquidationShare(), PROTOCOL_LIQ_SHARE);
         assertEq(adapter.closeFactor(), CLOSE_FACTOR);
     }
 
     function test_initialize_revertsIfCalledTwice() external {
         vm.expectRevert("Initializable: contract is already initialized");
-        adapter.initialize(
-            address(controller), address(psr), comptrollerAddr, PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm)
-        );
+        adapter.initialize(address(controller), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm));
     }
 
     function test_initialize_revertsIfProtocolShareExceedsMantissa() external {
@@ -42,45 +38,19 @@ contract LiquidationAdapterTest is VaultTestBase {
             address(adapterImpl),
             makeAddr("pa2"),
             abi.encodeCall(
-                LiquidationAdapter.initialize,
-                (address(controller), address(psr), comptrollerAddr, MANTISSA_ONE + 1, CLOSE_FACTOR, address(acm))
+                LiquidationAdapter.initialize, (address(controller), MANTISSA_ONE + 1, CLOSE_FACTOR, address(acm))
             )
         );
     }
 
     function test_initialize_revertsIfZeroAddress() external {
         LiquidationAdapter adapterImpl = new LiquidationAdapter();
-        address impl_ = address(adapterImpl);
-        address pa = makeAddr("pa_la");
 
         vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
         new TransparentUpgradeableProxy(
-            impl_,
-            pa,
-            abi.encodeCall(
-                LiquidationAdapter.initialize,
-                (address(0), address(psr), comptrollerAddr, PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
-            )
-        );
-
-        vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
-        new TransparentUpgradeableProxy(
-            impl_,
-            pa,
-            abi.encodeCall(
-                LiquidationAdapter.initialize,
-                (address(controller), address(0), comptrollerAddr, PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
-            )
-        );
-
-        vm.expectRevert(LiquidationAdapter.InvalidAddress.selector);
-        new TransparentUpgradeableProxy(
-            impl_,
-            pa,
-            abi.encodeCall(
-                LiquidationAdapter.initialize,
-                (address(controller), address(psr), address(0), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
-            )
+            address(adapterImpl),
+            makeAddr("pa_la"),
+            abi.encodeCall(LiquidationAdapter.initialize, (address(0), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm)))
         );
     }
 
@@ -90,10 +60,7 @@ contract LiquidationAdapterTest is VaultTestBase {
         new TransparentUpgradeableProxy(
             address(adapterImpl),
             makeAddr("pa3"),
-            abi.encodeCall(
-                LiquidationAdapter.initialize,
-                (address(controller), address(psr), comptrollerAddr, PROTOCOL_LIQ_SHARE, 0, address(acm))
-            )
+            abi.encodeCall(LiquidationAdapter.initialize, (address(controller), PROTOCOL_LIQ_SHARE, 0, address(acm)))
         );
     }
 
@@ -395,27 +362,5 @@ contract LiquidationAdapterTest is VaultTestBase {
     function test_setProtocolLiquidationShare_revertsIfExceedsMantissa() external {
         vm.expectRevert(LiquidationAdapter.InvalidShare.selector);
         adapter.setProtocolLiquidationShare(MANTISSA_ONE + 1);
-    }
-
-    function test_setProtocolShareReserve_valid() external {
-        address newPSR = makeAddr("newPSR");
-
-        vm.expectEmit(true, true, false, false);
-        emit LiquidationAdapter.ProtocolShareReserveUpdated(address(psr), newPSR);
-
-        adapter.setProtocolShareReserve(newPSR);
-
-        assertEq(adapter.protocolShareReserve(), newPSR);
-    }
-
-    function test_setComptroller_valid() external {
-        address newComp = makeAddr("newComptroller");
-
-        vm.expectEmit(true, true, false, false);
-        emit LiquidationAdapter.ComptrollerUpdated(comptrollerAddr, newComp);
-
-        adapter.setComptroller(newComp);
-
-        assertEq(adapter.comptroller(), newComp);
     }
 }

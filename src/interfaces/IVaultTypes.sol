@@ -23,7 +23,7 @@ enum VaultState {
     Matured, // 7 — settlement complete, shares redeemable (both)
     Failed, // 8 — fundraising below min cap OR institution default (both; Ceffu: Cancelled)
     Liquidated, // 9 — Institutional Vault: bad-debt rescue; Ceffu: N/A
-    Closed // 10 — governance delisted; Ceffu uses this; Institutional Vault uses isActive flag
+    Closed // 10 — governance delisted; vault transitions here on closeVault(); all operations blocked
 }
 
 /// @notice Shared immutable configuration set once at vault initialization.
@@ -49,7 +49,6 @@ struct VaultConfig {
 struct VaultRuntime {
     // ── Lifecycle ──
     VaultState state;
-    bool isActive;
     // ── Timing ──
     uint40 openStartTime;
     uint40 openEndTime;

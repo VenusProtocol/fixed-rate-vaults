@@ -49,9 +49,6 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice InstitutionPositionToken contract — from controller storage.
     IInstitutionPositionToken public positionToken;
 
-    /// @notice LiquidationAdapter address — from controller storage.
-    address public liquidationAdapter;
-
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
@@ -103,9 +100,9 @@ contract InstitutionalLoanVault is BaseVault {
         _;
     }
 
-    /// @dev Restricts to the LiquidationAdapter contract set during initialization.
+    /// @dev Restricts to the LiquidationAdapter contract stored on the controller.
     modifier onlyLiquidationAdapter() {
-        if (msg.sender != liquidationAdapter) revert Unauthorized();
+        if (msg.sender != _liquidationAdapter()) revert Unauthorized();
         _;
     }
 
@@ -128,25 +125,23 @@ contract InstitutionalLoanVault is BaseVault {
      * @param instConfig_ Institutional-specific configuration (collateral, sizing, position identity).
      * @param riskConfig_ Risk parameters.
      * @param positionToken_ InstitutionPositionToken contract reference.
-     * @param liquidationAdapter_ LiquidationAdapter contract address.
+     * @param name_ ERC-20 share token name.
+     * @param symbol_ ERC-20 share token symbol.
      */
     function initialize(
         VaultConfig calldata config_,
         InstitutionalConfig calldata instConfig_,
         RiskConfig calldata riskConfig_,
         IInstitutionPositionToken positionToken_,
-        address liquidationAdapter_
+        string calldata name_,
+        string calldata symbol_
     ) external initializer {
-        __BaseVault_init(
-            IERC20Upgradeable(address(config_.supplyAsset)), "Venus Institutional Loan Vault Share", "vILV", msg.sender
-        );
+        __BaseVault_init(IERC20Upgradeable(address(config_.supplyAsset)), name_, symbol_, msg.sender);
 
         _config = config_;
         _instConfig = instConfig_;
         _riskConfig = riskConfig_;
-        if (liquidationAdapter_ == address(0)) revert ZeroAddress();
         positionToken = positionToken_;
-        liquidationAdapter = liquidationAdapter_;
         _runtime.state = VaultState.WaitingForMargin;
     }
 
@@ -167,7 +162,6 @@ contract InstitutionalLoanVault is BaseVault {
         _runtime.lockStartTime = openEnd;
         _runtime.lockEndTime = lockEnd;
         _runtime.settlementDeadline = lockEnd + _config.settlementWindow;
-        _runtime.isActive = true;
         emit VaultOpened(openEnd);
         _stateTransition(VaultState.Fundraising);
     }
@@ -185,8 +179,7 @@ contract InstitutionalLoanVault is BaseVault {
     function repayBadDebt(
         uint256 repayAmount
     ) external nonReentrant whenNotCompletelyPaused {
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
             revert InvalidState();
         }
@@ -260,8 +253,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 repayAmount
     ) external onlyLiquidationAdapter nonReentrant whenNotCompletelyPaused returns (uint256 actualRepay) {
         if (repayAmount == 0) revert ZeroRepayAmount();
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.Lock && s != VaultState.PendingSettlement && s != VaultState.SettlementDeadlineExceeded) {
             revert InvalidState();
         }
@@ -290,8 +282,9 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 repayAmount
     ) external onlyLiquidationAdapter nonReentrant whenNotCompletelyPaused returns (uint256 actualRepay) {
         if (repayAmount == 0) revert ZeroRepayAmount();
-        _checkAndAdvanceState();
-        if (_runtime.state != VaultState.SettlementDeadlineExceeded) revert InvalidStateForOverdueLiquidation();
+        if (_checkAndAdvanceState() != VaultState.SettlementDeadlineExceeded) {
+            revert InvalidStateForOverdueLiquidation();
+        }
 
         uint256 debt = _outstandingDebt();
         if (debt == 0) revert NoOutstandingDebt();
@@ -318,8 +311,7 @@ contract InstitutionalLoanVault is BaseVault {
     function depositCollateral(
         uint256 amount
     ) external onlyPositionHolder nonReentrant whenNotPaused {
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.WaitingForMargin && s != VaultState.Fundraising && s != VaultState.Lock) {
             revert InvalidState();
         }
@@ -355,8 +347,7 @@ contract InstitutionalLoanVault is BaseVault {
     function withdrawCollateral(
         uint256 amount
     ) external onlyPositionHolder nonReentrant whenNotPaused {
-        _checkAndAdvanceState();
-        VaultState s = _runtime.state;
+        VaultState s = _checkAndAdvanceState();
         if (s != VaultState.Lock && s != VaultState.Matured && s != VaultState.Failed) {
             revert InvalidState();
         }
@@ -503,14 +494,15 @@ contract InstitutionalLoanVault is BaseVault {
     /**
      * @dev Full state machine for the institutional vault lifecycle.
      *      Handles all time-based and condition-based auto-transitions.
+     * @return Current vault state after any transitions are applied.
      */
-    function _checkAndAdvanceState() internal override {
+    function _checkAndAdvanceState() internal override returns (VaultState) {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
         // Fundraising -> Lock (collateral sufficient) or Failed
         if (s == VaultState.Fundraising) {
-            if (currentTime < _runtime.openEndTime) return;
+            if (currentTime < _runtime.openEndTime) return s;
             uint256 totalRaised = _runtime.totalRaised;
             if (
                 totalRaised >= _config.minBorrowCap
@@ -520,7 +512,7 @@ contract InstitutionalLoanVault is BaseVault {
             } else {
                 _enterFailed(totalRaised);
             }
-            return;
+            return _runtime.state;
         }
 
         uint256 lockEnd = _runtime.lockEndTime;
@@ -536,11 +528,11 @@ contract InstitutionalLoanVault is BaseVault {
             uint256 debt = _outstandingDebt();
             if (debt == 0) {
                 _enterMatured();
-                return;
+                return _runtime.state;
             }
             if (currentTime > _runtime.settlementDeadline && debt > 0) {
                 _stateTransition(VaultState.SettlementDeadlineExceeded);
-                return;
+                return _runtime.state;
             }
         }
 
@@ -548,6 +540,8 @@ contract InstitutionalLoanVault is BaseVault {
         if (s == VaultState.SettlementDeadlineExceeded && _outstandingDebt() == 0) {
             _enterMatured();
         }
+
+        return _runtime.state;
     }
 
     /**
@@ -630,7 +624,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 actualRepay,
         LiquidationType liqType
     ) internal returns (uint256 seizeAmount) {
-        uint256 closeFactor = ILiquidationAdapter(liquidationAdapter).closeFactor();
+        uint256 closeFactor = ILiquidationAdapter(_liquidationAdapter()).closeFactor();
         uint256 maxRepay = (debt * closeFactor) / MANTISSA_ONE;
         if (actualRepay > maxRepay) revert ExceedsCloseFactor();
 
@@ -659,6 +653,11 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Returns the current LiquidationAdapter address from the controller.
+    function _liquidationAdapter() internal view returns (address) {
+        return IInstitutionalVaultController(vaultController).liquidationAdapter();
+    }
 
     /**
      * @dev Converts a collateral token amount to its USD value via oracle.

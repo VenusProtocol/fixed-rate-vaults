@@ -83,7 +83,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
         tokenId = nextTokenId++;
         tokenIdToVault[tokenId] = vault;
         vaultToTokenId[vault] = tokenId;
-        _safeMint(to, tokenId);
+        _mint(to, tokenId);
         emit PositionTokenMinted(vault, tokenId, to);
     }
 

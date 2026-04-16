@@ -20,14 +20,16 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @param _instConfig Institutional-specific configuration (collateral, sizing, position identity).
      * @param _riskConfig Risk parameters (LT, LI, latePenaltyRate).
      * @param _positionToken InstitutionPositionToken contract reference.
-     * @param _liquidationAdapter LiquidationAdapter contract address.
+     * @param _name ERC-20 share token name.
+     * @param _symbol ERC-20 share token symbol.
      */
     function initialize(
         VaultConfig calldata _config,
         InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig,
         IInstitutionPositionToken _positionToken,
-        address _liquidationAdapter
+        string calldata _name,
+        string calldata _symbol
     ) external;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -35,7 +37,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Transitions MarginDeposited -> Open. Sets timestamps and isActive.
+     * @notice Transitions MarginDeposited -> Open. Sets fundraising and lock timestamps.
      * @custom:error InvalidState If vault is not in MarginDeposited state.
      * @custom:event VaultOpened Emitted with the open end time.
      * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
@@ -43,7 +45,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     function openVault() external;
 
     /**
-     * @notice Sets isActive = false. Vault stays in Matured/Failed/Liquidated.
+     * @notice Transitions vault to Closed state. All operations are blocked after this point.
      * @custom:error InvalidState If vault is not in a terminal state.
      * @custom:event VaultClosed Emitted with the terminal state.
      */

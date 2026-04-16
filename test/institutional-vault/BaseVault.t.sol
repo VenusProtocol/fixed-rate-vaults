@@ -31,7 +31,6 @@ contract TestVault is BaseVault {
         __BaseVault_init(IERC20Upgradeable(address(cfg.supplyAsset)), "Test Vault Share", "TVS", controller_);
         _config = cfg;
         _runtime.state = VaultState.Fundraising;
-        _runtime.isActive = true;
         uint40 ts = uint40(block.timestamp);
         _runtime.openStartTime = ts;
         _runtime.openEndTime = ts + cfg.openDuration;
@@ -53,12 +52,12 @@ contract TestVault is BaseVault {
     }
 
     /// @dev Minimal state machine for BaseVault mechanics tests (no institutional collateral check).
-    function _checkAndAdvanceState() internal override {
+    function _checkAndAdvanceState() internal override returns (VaultState) {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
         if (s == VaultState.Fundraising) {
-            if (currentTime < _runtime.openEndTime) return;
+            if (currentTime < _runtime.openEndTime) return _runtime.state;
             uint256 totalRaised = _runtime.totalRaised;
             if (totalRaised >= _config.minBorrowCap) {
                 _stateTransition(VaultState.Lock);
@@ -67,7 +66,7 @@ contract TestVault is BaseVault {
                 _runtime.settlementAmount = totalRaised;
                 _stateTransition(VaultState.Failed);
             }
-            return;
+            return _runtime.state;
         }
 
         uint256 lockEnd = _runtime.lockEndTime;
@@ -82,11 +81,11 @@ contract TestVault is BaseVault {
             if (debt == 0) {
                 _stateTransition(VaultState.Matured);
                 _settleProtocolShare();
-                return;
+                return _runtime.state;
             }
             if (currentTime > _runtime.settlementDeadline) {
                 _stateTransition(VaultState.SettlementDeadlineExceeded);
-                return;
+                return _runtime.state;
             }
         }
 
@@ -94,6 +93,7 @@ contract TestVault is BaseVault {
             _stateTransition(VaultState.Matured);
             _settleProtocolShare();
         }
+        return _runtime.state;
     }
 
     /// @dev Test-only helper: forces vault directly to Matured and runs settlement.
@@ -863,7 +863,7 @@ contract BaseVaultTest is Test {
         vm.prank(address(mockVaultController));
         mockVaultController.callVault(address(vault), abi.encodeCall(BaseVault.closeVault, ()));
 
-        assertFalse(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Closed));
     }
 
     function test_closeVault_revertsInLock() external {

@@ -37,12 +37,6 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /// @notice InstitutionalVaultController address (vaults are validated via controller).
     address public vaultController;
 
-    /// @notice Venus ProtocolShareReserve — protocol's share of liquidation incentive.
-    address public protocolShareReserve;
-
-    /// @notice Comptroller address for PSR integration.
-    address public comptroller;
-
     /// @notice HF-based liquidators — can call liquidate() when LT shortfall > 0.
     mapping(address => bool) public isWhitelistedLiquidator;
 
@@ -59,7 +53,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     mapping(address => uint256) public protocolShareAccrued;
 
     /// @dev Reserved storage gap for future upgrades.
-    uint256[42] private __gap;
+    uint256[44] private __gap;
 
     // ──────────────────────────────────────────────────────────────────────
     // Events
@@ -71,8 +65,6 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     event CloseFactorUpdated(uint256 oldCloseFactor, uint256 newCloseFactor);
     event LiquidationCollateralSplit(uint256 totalSeized, uint256 protocolAmount, uint256 callerAmount);
     event ProtocolShareSweptToReserve(address indexed collateral, uint256 amount);
-    event ProtocolShareReserveUpdated(address indexed oldPSR, address indexed newPSR);
-    event ComptrollerUpdated(address indexed oldComptroller, address indexed newComptroller);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -117,16 +109,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     /**
      * @notice Initializes the adapter proxy.
      * @param vaultController_ VaultController address.
-     * @param protocolShareReserve_ PSR address.
-     * @param comptroller_ Comptroller address for PSR.
      * @param protocolLiquidationShare_ Initial protocol share of incentive (mantissa).
      * @param closeFactor_ Initial close factor (mantissa).
      * @param acm_ Venus AccessControlManager address.
      */
     function initialize(
         address vaultController_,
-        address protocolShareReserve_,
-        address comptroller_,
         uint256 protocolLiquidationShare_,
         uint256 closeFactor_,
         address acm_
@@ -135,12 +123,8 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         __ReentrancyGuard_init();
 
         if (vaultController_ == address(0)) revert InvalidAddress();
-        if (protocolShareReserve_ == address(0)) revert InvalidAddress();
-        if (comptroller_ == address(0)) revert InvalidAddress();
 
         vaultController = vaultController_;
-        protocolShareReserve = protocolShareReserve_;
-        comptroller = comptroller_;
         if (protocolLiquidationShare_ > MANTISSA_ONE) revert InvalidShare();
         protocolLiquidationShare = protocolLiquidationShare_;
         if (closeFactor_ == 0 || closeFactor_ > MANTISSA_ONE) revert InvalidCloseFactor();
@@ -208,35 +192,6 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
     }
 
     /**
-     * @notice Update ProtocolShareReserve address.
-     * @param psr New PSR address.
-     * @custom:error InvalidAddress if zero address.
-     */
-    function setProtocolShareReserve(
-        address psr
-    ) external {
-        _checkAccessAllowed("setProtocolShareReserve(address)");
-        if (psr == address(0)) revert InvalidAddress();
-        emit ProtocolShareReserveUpdated(protocolShareReserve, psr);
-        protocolShareReserve = psr;
-    }
-
-    /**
-     * @notice Update comptroller address for PSR.
-     * @param comptroller_ New comptroller address.
-     * @custom:error InvalidAddress If zero address.
-     * @custom:event ComptrollerUpdated
-     */
-    function setComptroller(
-        address comptroller_
-    ) external {
-        _checkAccessAllowed("setComptroller(address)");
-        if (comptroller_ == address(0)) revert InvalidAddress();
-        emit ComptrollerUpdated(comptroller, comptroller_);
-        comptroller = comptroller_;
-    }
-
-    /**
      * @notice Transfer accrued protocol share for the given collateral token to PSR.
      * @param collateral Collateral token address.
      * @custom:event ProtocolShareSweptToReserve
@@ -249,11 +204,12 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         if (amount == 0) return;
 
         protocolShareAccrued[collateral] = 0;
-        IERC20(collateral).safeTransfer(protocolShareReserve, amount);
-        IProtocolShareReserve(protocolShareReserve)
-            .updateAssetsState(
-                comptroller, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION
-            );
+        IInstitutionalVaultController ctrl = IInstitutionalVaultController(vaultController);
+        address psr = ctrl.protocolShareReserve();
+        address cpt = ctrl.comptroller();
+        IERC20(collateral).safeTransfer(psr, amount);
+        IProtocolShareReserve(psr)
+            .updateAssetsState(cpt, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION);
         emit ProtocolShareSweptToReserve(collateral, amount);
     }
 

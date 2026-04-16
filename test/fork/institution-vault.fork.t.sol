@@ -106,17 +106,9 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         oracle.setDirectPrice(address(collateral), 1e18);
 
         // Initialize adapter/controller proxies as in InitializeSystem script
-        adapter.initialize(
-            address(controller),
-            psrAddress,
-            addrs.unitroller,
-            PROTOCOL_LIQ_SHARE,
-            CLOSE_FACTOR,
-            addrs.accessControlManager
-        );
+        adapter.initialize(address(controller), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, addrs.accessControlManager);
         controller.initialize(
             address(vaultImpl),
-            address(adapter),
             addrs.resilientOracle,
             psrAddress,
             addrs.unitroller,
@@ -124,6 +116,9 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
             address(posToken),
             addrs.accessControlManager
         );
+
+        // Wire adapter via setter (no longer part of initialize)
+        controller.setLiquidationAdapter(address(adapter));
 
         // Transfer position token ownership to controller (Ownable2Step)
         posToken.transferOwnership(address(controller));
@@ -276,7 +271,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         vm.expectEmit(address(vault));
         emit BaseVault.VaultClosed(VaultState.Matured);
         controller.closeVault(address(vault));
-        assertFalse(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Closed));
     }
 
     function test_fork_happyPath_multiSupplier() external {
@@ -1409,7 +1404,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         vm.expectEmit(address(vault));
         emit BaseVault.VaultClosed(VaultState.Liquidated);
         controller.closeVault(address(vault));
-        assertFalse(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Closed));
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1699,7 +1694,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         assertEq(collateral.balanceOf(institution), IDEAL_COLLATERAL_AMOUNT);
 
         controller.closeVault(address(vault));
-        assertFalse(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Closed));
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1903,7 +1898,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
 
         // Make this deterministic: LiquidationAdapter does not try/catch PSR updates,
         // so we route sweeps into the local MockPSR (it will accept mock token addresses).
-        adapter.setProtocolShareReserve(address(psr));
+        controller.setProtocolShareReserve(address(psr));
         uint256 psrBalBefore = collateral.balanceOf(address(psr));
         vm.expectEmit(true, false, false, true, address(adapter));
         emit LiquidationAdapter.ProtocolShareSweptToReserve(address(collateral), accrued);
@@ -1929,7 +1924,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         assertEq(uint8(vault.state()), uint8(VaultState.Matured));
 
         controller.closeVault(address(vault));
-        assertFalse(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Closed));
 
         // Mint an unrelated token directly to the vault (stuck tokens scenario).
         MockERC20 extra = new MockERC20("Extra", "EXTRA");
@@ -1952,7 +1947,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
     function test_fork_sweep_succeedsWhileVaultActive() external {
         // Vault is active after opening.
         _openVault();
-        assertTrue(vault.runtime().isActive);
+        assertEq(uint8(vault.runtime().state), uint8(VaultState.Fundraising));
 
         MockERC20 extra = new MockERC20("Extra", "EXTRA");
         uint256 amount = 1e18;

@@ -81,24 +81,6 @@ interface ILiquidationAdapter {
     ) external;
 
     /**
-     * @notice Update ProtocolShareReserve address.
-     * @param _psr New ProtocolShareReserve address.
-     * @custom:event ProtocolShareReserveUpdated
-     */
-    function setProtocolShareReserve(
-        address _psr
-    ) external;
-
-    /**
-     * @notice Update comptroller address for PSR.
-     * @param _comptroller New comptroller address.
-     * @custom:event ComptrollerUpdated
-     */
-    function setComptroller(
-        address _comptroller
-    ) external;
-
-    /**
      * @notice Transfer accrued protocol share to PSR.
      * @param collateral Collateral token address to sweep.
      */

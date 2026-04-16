@@ -129,8 +129,7 @@ abstract contract VaultTestBase is Test {
         // Controller implementation.
         InstitutionalVaultController controllerImpl = new InstitutionalVaultController();
 
-        // Deploy controller proxy with a placeholder adapter address (updated below).
-        // This avoids the circular dependency: controller needs adapter, adapter needs controller.
+        // Deploy controller proxy. Adapter is set post-deploy via setLiquidationAdapter().
         controller = InstitutionalVaultController(
             address(
                 new TransparentUpgradeableProxy(
@@ -140,7 +139,6 @@ abstract contract VaultTestBase is Test {
                         InstitutionalVaultController.initialize,
                         (
                             address(deployedVaultImpl),
-                            address(1), // placeholder adapter — updated after adapter deploy
                             address(oracle),
                             address(psr),
                             comptrollerAddr,
@@ -161,14 +159,7 @@ abstract contract VaultTestBase is Test {
                     proxyAdmin,
                     abi.encodeCall(
                         LiquidationAdapter.initialize,
-                        (
-                            address(controller),
-                            address(psr),
-                            comptrollerAddr,
-                            PROTOCOL_LIQ_SHARE,
-                            CLOSE_FACTOR,
-                            address(acm)
-                        )
+                        (address(controller), PROTOCOL_LIQ_SHARE, CLOSE_FACTOR, address(acm))
                     )
                 )
             )
@@ -189,7 +180,7 @@ abstract contract VaultTestBase is Test {
         // Controller functions
         string[14] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
-            "createVault(VaultConfig,InstitutionalConfig,RiskConfig)",
+            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
@@ -214,16 +205,14 @@ abstract contract VaultTestBase is Test {
         }
 
         // Adapter functions
-        string[7] memory adapterSigs = [
+        string[5] memory adapterSigs = [
             "setLiquidatorWhitelist(address,bool)",
             "setSettlerWhitelist(address,bool)",
             "setProtocolLiquidationShare(uint256)",
             "setCloseFactor(uint256)",
-            "setProtocolShareReserve(address)",
-            "setComptroller(address)",
             "sweepProtocolShareToReserve(address)"
         ];
-        for (uint256 i; i < 7; ++i) {
+        for (uint256 i; i < 5; ++i) {
             acm.giveCallPermission(address(0), adapterSigs[i], admin);
         }
     }
@@ -262,7 +251,8 @@ abstract contract VaultTestBase is Test {
 
     /// @dev Creates a vault clone and returns its address.
     function _createVault() internal returns (address vaultAddr) {
-        vaultAddr = controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig());
+        vaultAddr =
+            controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
         vault = InstitutionalLoanVault(vaultAddr);
     }
 
