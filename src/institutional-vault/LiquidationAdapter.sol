@@ -204,12 +204,14 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
         if (amount == 0) return;
 
         protocolShareAccrued[collateral] = 0;
-        IInstitutionalVaultController ctrl = IInstitutionalVaultController(vaultController);
-        address psr = ctrl.protocolShareReserve();
-        address cpt = ctrl.comptroller();
+        IInstitutionalVaultController coreController = IInstitutionalVaultController(vaultController);
+        address psr = coreController.protocolShareReserve();
+        address comptroller = coreController.comptroller();
         IERC20(collateral).safeTransfer(psr, amount);
         IProtocolShareReserve(psr)
-            .updateAssetsState(cpt, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION);
+            .updateAssetsState(
+                comptroller, collateral, IProtocolShareReserve.IncomeType.INSTITUTIONAL_VAULT_LIQUIDATION
+            );
         emit ProtocolShareSweptToReserve(collateral, amount);
     }
 

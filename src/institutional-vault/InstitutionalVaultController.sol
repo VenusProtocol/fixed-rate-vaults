@@ -27,6 +27,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /// @notice Maximum allowed multiplier for rate parameters (LI, LP). Caps bonus/penalty at 50% above mantissa.
     uint256 public constant MANTISSA_ONE_AND_HALF = 1.5e18;
 
+    /// @notice Maximum allowed fixed APY in basis points (100% = 10 000 bps).
+    ///         Interest is calculated as: totalRaised * fixedAPY * lockDuration / (BPS * YEAR).
+    uint256 public constant MAX_APY_BPS = 10_000;
+
     // ──────────────────────────────────────────────────────────────────────
     // Storage — Core Configuration
     // ──────────────────────────────────────────────────────────────────────
@@ -534,7 +538,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
             revert InvalidConfig();
         }
         if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
-        if (vaultConfig.fixedAPY == 0) revert InvalidConfig();
+        if (vaultConfig.fixedAPY == 0 || vaultConfig.fixedAPY > MAX_APY_BPS) revert InvalidConfig();
         if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
         // Institutional config validation
         if (instConfig.institutionOperator == address(0)) revert InvalidConfig();

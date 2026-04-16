@@ -470,7 +470,6 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         }
 
         uint256 psrTotal = protocolFee + surplus;
-        // TBD: need to confirm if protocol share goes to PSR
         if (psrTotal > 0) {
             supplyToken.safeTransfer(psr, psrTotal);
             try IProtocolShareReserve(psr)
@@ -613,7 +612,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         _runtime.totalDebt += amount;
         supplyToken.safeTransfer(recipient, amount);
         _checkAndAdvanceState();
-        
+
         emit RaisedFundsClaimed(amount);
     }
 
