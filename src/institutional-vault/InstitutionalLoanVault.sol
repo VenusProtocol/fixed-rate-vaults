@@ -63,7 +63,7 @@ contract InstitutionalLoanVault is BaseVault {
     event OverdueLiquidationExecuted(address indexed settler, uint256 repayAmount, uint256 collateralSeized);
     event MarginConfiscated(uint256 marginAmount);
     event MarginCompensationClaimed(address indexed receiver, uint256 amount);
-    event CollateralRefunded(address indexed recipient, uint256 amount);
+    event VaultCancelled(address indexed recipient, uint256 collateralAmount);
     event LiquidationThresholdUpdated(uint256 oldLT, uint256 newLT);
     event LiquidationIncentiveUpdated(uint256 oldLI, uint256 newLI);
     event LatePenaltyRateUpdated(uint256 oldRate, uint256 newRate);
@@ -167,28 +167,28 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @notice Refunds the institution's deposited margin to the NFT position holder and transitions
-     *         the vault to Failed. Restricted to MarginDeposited — the pre-launch hand-off point
-     *         where governance has not yet opened the vault. Uses positionToken.ownerOf so any
-     *         approved NFT transfer is honoured.
-     * @custom:error InvalidState If vault is not in MarginDeposited.
-     * @custom:event CollateralRefunded Emitted with the position-holder recipient and the refunded amount.
-     * @custom:event VaultFailed Emitted with totalRaised=0 and the vault's minBorrowCap.
-     * @custom:event StateTransition Emitted for MarginDeposited -> Failed.
+     * @notice Cancels a vault that has not yet launched and refunds any deposited collateral
+     *         to the NFT position holder. Restricted to the two pre-launch states:
+     *         WaitingForMargin (no collateral yet) or MarginDeposited (margin in escrow).
+     *         Uses positionToken.ownerOf so any approved NFT transfer is honoured.
+     * @custom:error InvalidState If vault is not in WaitingForMargin or MarginDeposited.
+     * @custom:event VaultCancelled Emitted with the position-holder recipient and refunded collateral amount.
+     * @custom:event StateTransition Emitted by _stateTransition for WaitingForMargin/MarginDeposited -> Failed.
      */
-    function refundCollateral() external onlyController nonReentrant {
-        if (_runtime.state != VaultState.MarginDeposited) revert InvalidState();
+    function cancelVault() external onlyController nonReentrant {
+        VaultState s = _runtime.state;
+        if (s != VaultState.WaitingForMargin && s != VaultState.MarginDeposited) revert InvalidState();
 
         address recipient = positionToken.ownerOf(_instConfig.positionTokenId);
         uint256 amount = _instRuntime.totalCollateralDeposited;
 
         _stateTransition(VaultState.Failed);
-        emit VaultFailed(0, _config.minBorrowCap);
 
         if (amount > 0) {
             _releaseCollateral(recipient, amount);
-            emit CollateralRefunded(recipient, amount);
         }
+
+        emit VaultCancelled(recipient, amount);
     }
 
     /**

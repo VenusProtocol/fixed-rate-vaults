@@ -506,7 +506,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // 5C.1 — refundCollateral
+    // 5C.1 — cancelVault
     // ──────────────────────────────────────────────────────────────────────
 
     /// @dev Deposits the full margin into a fresh vault, leaving it in MarginDeposited.
@@ -518,7 +518,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         vm.stopPrank();
     }
 
-    function test_refundCollateral_happyPath() external {
+    function test_cancelVault_happyPath() external {
         _createVault();
         _depositMargin();
         assertEq(uint8(vault.state()), uint8(VaultState.MarginDeposited));
@@ -526,9 +526,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         uint256 institutionBalanceBefore = collateral.balanceOf(institution);
 
         vm.expectEmit(true, false, false, true);
-        emit InstitutionalLoanVault.CollateralRefunded(institution, MARGIN_AMOUNT);
+        emit InstitutionalLoanVault.VaultCancelled(institution, MARGIN_AMOUNT);
 
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
 
         // State transition to Failed implicitly verifies VaultFailed was emitted.
         assertEq(uint8(vault.state()), uint8(VaultState.Failed));
@@ -536,7 +536,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertEq(collateral.balanceOf(institution) - institutionBalanceBefore, MARGIN_AMOUNT);
     }
 
-    function test_refundCollateral_routesToCurrentNftHolder() external {
+    function test_cancelVault_routesToCurrentNftHolder() external {
         _createVault();
         _depositMargin();
 
@@ -550,7 +550,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         uint256 institutionBalanceBefore = collateral.balanceOf(institution);
         uint256 newHolderBalanceBefore = collateral.balanceOf(newHolder);
 
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
 
         // Refund lands at the current NFT holder, not the original institution.
         assertEq(collateral.balanceOf(institution), institutionBalanceBefore);
@@ -558,35 +558,26 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertEq(uint8(vault.state()), uint8(VaultState.Failed));
     }
 
-    function test_refundCollateral_revertsIfWaitingForMargin() external {
-        _createVault();
-        // No margin deposited — vault is in WaitingForMargin.
-        assertEq(uint8(vault.state()), uint8(VaultState.WaitingForMargin));
-
-        vm.expectRevert(BaseVault.InvalidState.selector);
-        controller.refundCollateral(address(vault));
-    }
-
-    function test_refundCollateral_revertsIfFundraising() external {
+    function test_cancelVault_revertsIfFundraising() external {
         _createVault();
         _openVault();
         assertEq(uint8(vault.state()), uint8(VaultState.Fundraising));
 
         vm.expectRevert(BaseVault.InvalidState.selector);
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
     }
 
-    function test_refundCollateral_revertsIfLock() external {
+    function test_cancelVault_revertsIfLock() external {
         _createVault();
         _openVault();
         _lockVault();
         assertEq(uint8(vault.state()), uint8(VaultState.Lock));
 
         vm.expectRevert(BaseVault.InvalidState.selector);
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
     }
 
-    function test_refundCollateral_revertsIfMatured() external {
+    function test_cancelVault_revertsIfMatured() external {
         _createVault();
         _openVault();
         _lockVault();
@@ -594,41 +585,41 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertEq(uint8(vault.state()), uint8(VaultState.Matured));
 
         vm.expectRevert(BaseVault.InvalidState.selector);
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
     }
 
-    function test_refundCollateral_revertsIfFailed() external {
+    function test_cancelVault_revertsIfFailed() external {
         _createVault();
         _depositMargin();
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
         assertEq(uint8(vault.state()), uint8(VaultState.Failed));
 
         // Already-failed vault — second call must revert.
         vm.expectRevert(BaseVault.InvalidState.selector);
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
     }
 
-    function test_refundCollateral_revertsIfNotACM() external {
+    function test_cancelVault_revertsIfNotACM() external {
         _createVault();
         _depositMargin();
 
         vm.prank(lender1);
         vm.expectRevert();
-        controller.refundCollateral(address(vault));
+        controller.cancelVault(address(vault));
     }
 
-    function test_refundCollateral_revertsIfVaultNotRegistered() external {
+    function test_cancelVault_revertsIfVaultNotRegistered() external {
         vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
-        controller.refundCollateral(makeAddr("unknownVault"));
+        controller.cancelVault(makeAddr("unknownVault"));
     }
 
-    function test_refundCollateral_revertsIfDirectVaultCall() external {
+    function test_cancelVault_revertsIfDirectVaultCall() external {
         _createVault();
         _depositMargin();
 
         vm.prank(institution);
         vm.expectRevert(BaseVault.Unauthorized.selector);
-        vault.refundCollateral();
+        vault.cancelVault();
     }
 
     // ──────────────────────────────────────────────────────────────────────

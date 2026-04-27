@@ -182,7 +182,7 @@ abstract contract VaultTestBase is Test {
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
-            "refundCollateral(address)",
+            "cancelVault(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
             "unpauseVault(address)",

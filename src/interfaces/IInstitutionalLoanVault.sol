@@ -45,14 +45,14 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     function openVault() external;
 
     /**
-     * @notice Refunds the institution's margin to the NFT position holder and transitions the vault to Failed.
-     *         Callable only via the controller; restricted to MarginDeposited state.
-     * @custom:error InvalidState If vault is not in MarginDeposited.
-     * @custom:event CollateralRefunded
-     * @custom:event VaultFailed
-     * @custom:event StateTransition Emitted for MarginDeposited -> Failed.
+     * @notice Cancels a vault that has not yet launched and refunds any deposited collateral
+     *         to the NFT position holder. Callable only via the controller; restricted to
+     *         WaitingForMargin or MarginDeposited.
+     * @custom:error InvalidState If vault is not in WaitingForMargin or MarginDeposited.
+     * @custom:event VaultCancelled
+     * @custom:event StateTransition Emitted for WaitingForMargin/MarginDeposited -> Failed.
      */
-    function refundCollateral() external;
+    function cancelVault() external;
 
     /**
      * @notice Transitions vault to Closed state. All operations are blocked after this point.
