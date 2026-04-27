@@ -533,7 +533,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) {
             revert InvalidConfig();
         }
-        if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
         if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) {
             revert InvalidConfig();
         }
