@@ -320,10 +320,11 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
 
-    function test_createVault_ltAtMantissa_succeeds() external {
+    function test_createVault_revertsIfLtAtMantissa() external {
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationThreshold = MANTISSA_ONE;
 
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
 
@@ -369,6 +370,43 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
     function test_createVault_latePenaltyJustAboveMantissa_succeeds() external {
         RiskConfig memory rc = _buildRiskConfig();
         rc.latePenaltyRate = MANTISSA_ONE + 1;
+
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // LI*LT and latePenaltyRate*LT < 1.0 invariants
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_createVault_revertsIfLiTimesLtAtOrAboveOne() external {
+        // LT = 0.95e18, LI = 1.10e18 → LI*LT = 1.045e36 ≥ 1e36, must revert.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.95e18;
+        rc.liquidationIncentive = 1.10e18;
+        rc.latePenaltyRate = 1.05e18; // keep latePenalty*LT < 1 so LI invariant fires first
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfLatePenaltyTimesLtAtOrAboveOne() external {
+        // LT = 0.95e18, LI = 1.04e18 (LI*LT = 0.988e36 < 1e36),
+        // latePenalty = 1.10e18 → latePenalty*LT = 1.045e36 ≥ 1e36, must revert.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.95e18;
+        rc.liquidationIncentive = 1.04e18;
+        rc.latePenaltyRate = 1.10e18;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
+    function test_createVault_liTimesLtJustBelowOne_succeeds() external {
+        // LT = 0.9e18, LI = 1.10e18 → LI*LT = 0.99e36 < 1e36; latePenalty same → 0.99e36 < 1e36.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.9e18;
+        rc.liquidationIncentive = 1.10e18;
+        rc.latePenaltyRate = 1.10e18;
 
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
@@ -518,6 +556,38 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
 
         vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
         controller.setLatePenaltyRate(unknown, 1.2e18);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Setter cross-validation against live values
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_setLiquidationThreshold_revertsIfNewLtBreaksLiInvariant() external {
+        _createVault(); // defaults: LT=0.75e18, LI=1.10e18, latePenalty=1.15e18
+        // newLT = 0.95e18 → newLT * LI = 1.045e36 ≥ 1e36; LI invariant fires first.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationThreshold(address(vault), 0.95e18);
+    }
+
+    function test_setLiquidationThreshold_revertsIfNewLtBreaksLatePenaltyInvariant() external {
+        _createVault(); // defaults: LT=0.75e18, LI=1.10e18, latePenalty=1.15e18
+        // newLT = 0.9e18 → newLT * LI = 0.99e36 < 1e36 (passes), but newLT * latePenalty = 1.035e36 ≥ 1e36.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationThreshold(address(vault), 0.9e18);
+    }
+
+    function test_setLiquidationIncentive_revertsIfNewLiBreaksLtInvariant() external {
+        _createVault(); // live LT = 0.75e18
+        // newLI = 1.4e18 → live LT * newLI = 1.05e36 ≥ 1e36, must revert.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationIncentive(address(vault), 1.4e18);
+    }
+
+    function test_setLatePenaltyRate_revertsIfNewRateBreaksLtInvariant() external {
+        _createVault(); // live LT = 0.75e18
+        // newRate = 1.4e18 → live LT * newRate = 1.05e36 ≥ 1e36, must revert.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLatePenaltyRate(address(vault), 1.4e18);
     }
 
     // ──────────────────────────────────────────────────────────────────────

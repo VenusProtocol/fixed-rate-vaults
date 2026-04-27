@@ -323,6 +323,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidLiquidationThreshold();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(newLT, rc.liquidationIncentive);
+        _validateLiquidationInvariant(newLT, rc.latePenaltyRate);
         emit LiquidationThresholdUpdated(vault, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
@@ -342,6 +345,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= MANTISSA_ONE || newLI > MANTISSA_ONE_AND_HALF) revert InvalidLiquidationIncentive();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(rc.liquidationThreshold, newLI);
         emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
@@ -361,6 +366,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= MANTISSA_ONE || newRate > MANTISSA_ONE_AND_HALF) revert InvalidLatePenaltyRate();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(rc.liquidationThreshold, newRate);
         emit LatePenaltyRateUpdated(vault, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
@@ -551,6 +558,15 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (riskConfig.latePenaltyRate <= MANTISSA_ONE || riskConfig.latePenaltyRate > MANTISSA_ONE_AND_HALF) {
             revert InvalidConfig();
         }
+        _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.liquidationIncentive);
+        _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.latePenaltyRate);
+    }
+
+    /// @dev Reverts if `riskFactor * lt` reaches 1e36 (i.e. >= 1.0 in mantissa).
+    ///      A product >= 1.0 means liquidations would worsen vault health rather than improve it.
+    ///      Used for both `LI * LT` and `latePenaltyRate * LT` checks.
+    function _validateLiquidationInvariant(uint256 lt, uint256 riskFactor) private pure {
+        if (riskFactor * lt >= MANTISSA_ONE * MANTISSA_ONE) revert InvalidConfig();
     }
 
     /**
