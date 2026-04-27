@@ -214,6 +214,20 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
+     * @notice Refunds margin to the NFT position holder and transitions the vault to Failed.
+     *         Callable only on a vault still in MarginDeposited state.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function refundCollateral(
+        address vault
+    ) external {
+        _checkAccessAllowed("refundCollateral(address)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        IInstitutionalLoanVault(vault).refundCollateral();
+    }
+
+    /**
      * @notice Partial pause — blocks general operations; repay and liquidation remain available.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.

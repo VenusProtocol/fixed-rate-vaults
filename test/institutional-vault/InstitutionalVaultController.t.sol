@@ -382,7 +382,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         // LT = 0.95e18, LI = 1.10e18 → LI*LT = 1.045e36 ≥ 1e36, must revert.
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationThreshold = 0.95e18;
-        rc.liquidationIncentive = 1.10e18;
+        rc.liquidationIncentive = 1.1e18;
         rc.latePenaltyRate = 1.05e18; // keep latePenalty*LT < 1 so LI invariant fires first
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
@@ -395,7 +395,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationThreshold = 0.95e18;
         rc.liquidationIncentive = 1.04e18;
-        rc.latePenaltyRate = 1.10e18;
+        rc.latePenaltyRate = 1.1e18;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
@@ -405,8 +405,8 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         // LT = 0.9e18, LI = 1.10e18 → LI*LT = 0.99e36 < 1e36; latePenalty same → 0.99e36 < 1e36.
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationThreshold = 0.9e18;
-        rc.liquidationIncentive = 1.10e18;
-        rc.latePenaltyRate = 1.10e18;
+        rc.liquidationIncentive = 1.1e18;
+        rc.latePenaltyRate = 1.1e18;
 
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
@@ -503,6 +503,132 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.unpauseVault(address(vault));
 
         assertEq(uint8(vault.pauseLevel()), uint8(PauseLevel.Unpaused));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // 5C.1 — refundCollateral
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Deposits the full margin into a fresh vault, leaving it in MarginDeposited.
+    function _depositMargin() internal {
+        collateral.mint(institution, MARGIN_AMOUNT);
+        vm.startPrank(institution);
+        collateral.approve(address(vault), MARGIN_AMOUNT);
+        vault.depositCollateral(MARGIN_AMOUNT);
+        vm.stopPrank();
+    }
+
+    function test_refundCollateral_happyPath() external {
+        _createVault();
+        _depositMargin();
+        assertEq(uint8(vault.state()), uint8(VaultState.MarginDeposited));
+
+        uint256 institutionBalanceBefore = collateral.balanceOf(institution);
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalLoanVault.CollateralRefunded(institution, MARGIN_AMOUNT);
+
+        controller.refundCollateral(address(vault));
+
+        // State transition to Failed implicitly verifies VaultFailed was emitted.
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+        assertEq(vault.institutionalRuntime().totalCollateralDeposited, 0);
+        assertEq(collateral.balanceOf(institution) - institutionBalanceBefore, MARGIN_AMOUNT);
+    }
+
+    function test_refundCollateral_routesToCurrentNftHolder() external {
+        _createVault();
+        _depositMargin();
+
+        // Approve + transfer NFT to a new holder.
+        controller.approvePositionTransfer(address(vault));
+        uint256 tokenId = vault.institutionalConfig().positionTokenId;
+        address newHolder = makeAddr("newHolder");
+        vm.prank(institution);
+        posToken.transferFrom(institution, newHolder, tokenId);
+
+        uint256 institutionBalanceBefore = collateral.balanceOf(institution);
+        uint256 newHolderBalanceBefore = collateral.balanceOf(newHolder);
+
+        controller.refundCollateral(address(vault));
+
+        // Refund lands at the current NFT holder, not the original institution.
+        assertEq(collateral.balanceOf(institution), institutionBalanceBefore);
+        assertEq(collateral.balanceOf(newHolder) - newHolderBalanceBefore, MARGIN_AMOUNT);
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+    }
+
+    function test_refundCollateral_revertsIfWaitingForMargin() external {
+        _createVault();
+        // No margin deposited — vault is in WaitingForMargin.
+        assertEq(uint8(vault.state()), uint8(VaultState.WaitingForMargin));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfFundraising() external {
+        _createVault();
+        _openVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Fundraising));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfLock() external {
+        _createVault();
+        _openVault();
+        _lockVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Lock));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfMatured() external {
+        _createVault();
+        _openVault();
+        _lockVault();
+        _settleVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfFailed() external {
+        _createVault();
+        _depositMargin();
+        controller.refundCollateral(address(vault));
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+
+        // Already-failed vault — second call must revert.
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfNotACM() external {
+        _createVault();
+        _depositMargin();
+
+        vm.prank(lender1);
+        vm.expectRevert();
+        controller.refundCollateral(address(vault));
+    }
+
+    function test_refundCollateral_revertsIfVaultNotRegistered() external {
+        vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
+        controller.refundCollateral(makeAddr("unknownVault"));
+    }
+
+    function test_refundCollateral_revertsIfDirectVaultCall() external {
+        _createVault();
+        _depositMargin();
+
+        vm.prank(institution);
+        vm.expectRevert(BaseVault.Unauthorized.selector);
+        vault.refundCollateral();
     }
 
     // ──────────────────────────────────────────────────────────────────────

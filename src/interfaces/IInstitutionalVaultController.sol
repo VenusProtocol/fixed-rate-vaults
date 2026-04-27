@@ -53,6 +53,16 @@ interface IInstitutionalVaultController is IVaultController {
     ) external;
 
     /**
+     * @notice Refunds margin to the NFT position holder and transitions the vault to Failed.
+     *         Callable only on a vault still in MarginDeposited state.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function refundCollateral(
+        address vault
+    ) external;
+
+    /**
      * @notice Transitions vault to Closed state. All operations are blocked after this point.
      * @param vault Vault address to close.
      */

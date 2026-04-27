@@ -1498,10 +1498,11 @@ contract CrossDecimalLiquidationTest is Test {
     }
 
     function _grantAllPermissions() internal {
-        string[14] memory controllerSigs = [
+        string[15] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
+            "refundCollateral(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
             "unpauseVault(address)",
@@ -1514,7 +1515,7 @@ contract CrossDecimalLiquidationTest is Test {
             "setVaultImplementation(address)",
             "setLiquidationAdapter(address)"
         ];
-        for (uint256 i; i < 14; ++i) {
+        for (uint256 i; i < 15; ++i) {
             acm.giveCallPermission(address(0), controllerSigs[i], admin);
         }
 
