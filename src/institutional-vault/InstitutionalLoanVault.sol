@@ -300,7 +300,8 @@ contract InstitutionalLoanVault is BaseVault {
 
     /**
      * @notice Deposits collateral into the vault.
-     *         - WaitingForMargin: cumulative deposits must reach margin amount to transition to MarginDeposited.
+     *         - WaitingForMargin: the full margin amount must be deposited in a single transaction
+     *           to transition to MarginDeposited; partial deposits revert.
      *         - Fundraising: institution deposits remaining collateral alongside lender fundraising.
      *         - Lock: top-up collateral.
      * @param amount Amount of collateral tokens to deposit.
