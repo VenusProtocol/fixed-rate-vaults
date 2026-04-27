@@ -37,7 +37,6 @@ struct InstitutionalRuntime {
     // ── Collateral accounting ──
     uint256 totalCollateralDeposited; // cumulative collateral deposited by institution (decremented on withdrawal)
     uint256 minimumCollateralRequired; // locked floor; recalculated at Lock based on totalRaised
-    uint256 idealCollateralValuation; // USD snapshot of collateral at Lock entry
     // ── Margin confiscation (Failed scenario B) ──
     uint256 confiscatedMarginRemaining; // margin amount left to distribute to lenders (Scenario B); 0 in Scenario A
     bool institutionDefaulted; // true when Failed due to insufficient collateral (Scenario B)

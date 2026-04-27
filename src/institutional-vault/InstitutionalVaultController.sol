@@ -565,7 +565,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /// @dev Reverts if `riskFactor * lt` reaches 1e36 (i.e. >= 1.0 in mantissa).
     ///      A product >= 1.0 means liquidations would worsen vault health rather than improve it.
     ///      Used for both `LI * LT` and `latePenaltyRate * LT` checks.
-    function _validateLiquidationInvariant(uint256 lt, uint256 riskFactor) private pure {
+    function _validateLiquidationInvariant(
+        uint256 lt,
+        uint256 riskFactor
+    ) private pure {
         if (riskFactor * lt >= MANTISSA_ONE * MANTISSA_ONE) revert InvalidConfig();
     }
 
