@@ -71,7 +71,6 @@ contract InstitutionalLoanVault is BaseVault {
     // Errors
     // ──────────────────────────────────────────────────────────────────────
 
-    error ZeroAddress();
     error InsufficientCollateral();
     error NotPositionHolder();
     error PositionTokenIdNotSet();
