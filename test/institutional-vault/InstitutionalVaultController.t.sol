@@ -439,6 +439,26 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(cfg, instCfg, rc, "Inst Vault", "IV");
     }
 
+    function test_createVault_revertsIfSupplyAssetOraclePriceIsZero() external {
+        // Mock the oracle to return 0 for the supply asset — the probe in
+        // _validateVaultConfig should catch it before the clone is deployed.
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(supply)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfCollateralAssetOraclePriceIsZero() external {
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(collateral)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 5C — Vault Lifecycle Proxied Calls
     // ──────────────────────────────────────────────────────────────────────

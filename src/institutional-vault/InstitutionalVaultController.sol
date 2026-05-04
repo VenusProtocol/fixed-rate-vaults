@@ -10,6 +10,7 @@ import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/I
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
+import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
 /**
  * @title InstitutionalVaultController
@@ -522,29 +523,17 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Internal — Pure
+    // Internal — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Assembles InstitutionalConfig with the minted tokenId.
-    function _assembleInstConfig(
-        InstitutionalConfig calldata c,
-        uint256 tokenId
-    ) internal pure returns (InstitutionalConfig memory) {
-        return InstitutionalConfig({
-            collateralAsset: c.collateralAsset,
-            idealCollateralAmount: c.idealCollateralAmount,
-            marginRate: c.marginRate,
-            institutionOperator: c.institutionOperator,
-            positionTokenId: tokenId
-        });
-    }
-
     /// @dev Validates shared vault config, institutional config, and risk config at creation.
+    ///      Also probes the resilient oracle to confirm both supply and collateral assets are
+    ///      priced — a vault with an unsupported asset would later stall in price-dependent logic.
     function _validateVaultConfig(
         VaultConfig calldata vaultConfig,
         InstitutionalConfig calldata instConfig,
         RiskConfig calldata riskConfig
-    ) internal pure {
+    ) internal view {
         // Shared config validation
         if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
         if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
@@ -571,6 +560,34 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         }
         _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.liquidationIncentive);
         _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.latePenaltyRate);
+        // Oracle support — both assets must have a non-zero price.
+        _validateAssetPrice(address(vaultConfig.supplyAsset));
+        _validateAssetPrice(address(instConfig.collateralAsset));
+    }
+
+    /// @dev Reverts if the resilient oracle returns a zero price for `asset`.
+    function _validateAssetPrice(
+        address asset
+    ) private view {
+        if (IResilientOracle(oracle).getPrice(asset) == 0) revert InvalidConfig();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Pure
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Assembles InstitutionalConfig with the minted tokenId.
+    function _assembleInstConfig(
+        InstitutionalConfig calldata c,
+        uint256 tokenId
+    ) internal pure returns (InstitutionalConfig memory) {
+        return InstitutionalConfig({
+            collateralAsset: c.collateralAsset,
+            idealCollateralAmount: c.idealCollateralAmount,
+            marginRate: c.marginRate,
+            institutionOperator: c.institutionOperator,
+            positionTokenId: tokenId
+        });
     }
 
     /// @dev Reverts if `riskFactor * lt` reaches 1e36 (i.e. >= 1.0 in mantissa).
