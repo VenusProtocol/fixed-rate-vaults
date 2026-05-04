@@ -554,7 +554,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address payer,
         uint256 amount
     ) internal {
-        uint256 debt = _runtime.totalDebt;
+        uint256 debt = _outstandingDebt();
         uint256 actual = amount > debt ? debt : amount;
         if (actual == 0) return;
         _runtime.totalDebt -= actual;

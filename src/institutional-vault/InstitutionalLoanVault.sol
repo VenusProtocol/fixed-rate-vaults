@@ -711,7 +711,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 amount
     ) internal view returns (uint256) {
         if (amount == 0) return 0;
-        address supply = address(_config.supplyAsset);
+        address supply = asset();
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
         if (price == 0) revert InvalidOraclePrice();
@@ -755,7 +755,7 @@ contract InstitutionalLoanVault is BaseVault {
         RiskConfig memory rc = _riskConfig;
         uint256 incentive = liqType == LiquidationType.HF_BASED ? rc.liquidationIncentive : rc.latePenaltyRate;
 
-        address supplyAsset = address(_config.supplyAsset);
+        address supplyAsset = asset();
         address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
 
