@@ -526,7 +526,10 @@ contract InstitutionalLoanVault is BaseVault {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
-        // Fundraising -> Lock (collateral sufficient) or Failed
+        // Fundraising -> Lock (collateral sufficient) or Failed.
+        // After Lock, fall through to the Lock/PendingSettlement chain so a vault dormant past
+        // openEndTime catches up to its time-correct state in a single call (instead of stopping
+        // at Lock and allowing a late claimRaisedFunds to slip through).
         if (s == VaultState.Fundraising) {
             if (currentTime < _runtime.openEndTime) return s;
             uint256 totalRaised = _runtime.totalRaised;
@@ -535,10 +538,11 @@ contract InstitutionalLoanVault is BaseVault {
                     && _instRuntime.totalCollateralDeposited >= _instConfig.idealCollateralAmount
             ) {
                 _enterLock(totalRaised);
+                s = VaultState.Lock; // continue down to Lock fall-through
             } else {
                 _enterFailed(totalRaised);
+                return _runtime.state; // Failed is terminal for this chain
             }
-            return _runtime.state;
         }
 
         uint256 lockEnd = _runtime.lockEndTime;
