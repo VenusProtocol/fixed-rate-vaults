@@ -499,7 +499,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     function getAggregatedVaultStates() external view returns (VaultStateInfo[] memory) {
         uint256 len = allVaults.length;
         VaultStateInfo[] memory infos = new VaultStateInfo[](len);
-        for (uint256 i; i < len;) {
+        for (uint256 i; i < len; ++i) {
             address v = allVaults[i];
             IInstitutionalLoanVault vault = IInstitutionalLoanVault(v);
             infos[i] = VaultStateInfo({
@@ -509,9 +509,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
                 totalRaised: vault.runtime().totalRaised,
                 outstandingDebt: vault.outstandingDebt()
             });
-            unchecked {
-                ++i;
-            }
         }
         return infos;
     }
