@@ -500,9 +500,10 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         uint256 shares
     ) internal override nonReentrant whenNotPaused {
-        uint256 remaining = _config.maxBorrowCap - _runtime.totalRaised;
-        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit && assets < remaining) {
-            revert BelowMinimumDepositAmount();
+        uint256 floor = _config.minSupplierDeposit;
+        if (floor > 0 && assets < floor) {
+            uint256 remaining = _config.maxBorrowCap - _runtime.totalRaised;
+            if (assets < remaining) revert BelowMinimumDepositAmount();
         }
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
