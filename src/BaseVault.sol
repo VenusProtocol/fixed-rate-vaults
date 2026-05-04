@@ -488,7 +488,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     /**
      * @dev Internal deposit — min deposit check, share minting, totalRaised update.
      *      State check and advance are handled by the public wrappers (deposit/mint).
-     * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured minimum.
+     *      The minimum-deposit floor is waived for the final residual tail
+     *      (`assets == maxBorrowCap - totalRaised`) so a sub-minimum leftover capacity
+     *      can still be filled and the cap can actually be reached.
+     * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured
+     *               minimum and is not the final residual tail.
      */
     function _deposit(
         address caller,
@@ -496,7 +500,10 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         uint256 shares
     ) internal override nonReentrant whenNotPaused {
-        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDepositAmount();
+        uint256 remaining = _config.maxBorrowCap - _runtime.totalRaised;
+        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit && assets < remaining) {
+            revert BelowMinimumDepositAmount();
+        }
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
     }
