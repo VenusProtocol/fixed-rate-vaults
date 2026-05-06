@@ -643,11 +643,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
 
     /**
      * @dev Hook called at the start of _claimRaisedFunds to validate vault state.
-     *      Default implementation requires Lock state.
+     *      Default implementation requires Lock state and that block.timestamp lies inside
+     *      [lockStartTime, lockEndTime).
      *      Override in subcontracts to enforce a different state requirement.
-     * @custom:error InvalidState If the vault is not in the required state.
+     * @custom:error InvalidState If the vault is not in Lock or block.timestamp is outside
+     *               the [lockStartTime, lockEndTime) window.
      */
     function _beforeClaimRaisedFunds() internal virtual {
         if (_runtime.state != VaultState.Lock) revert InvalidState();
+        uint256 nowTs = block.timestamp;
+        if (nowTs < _runtime.lockStartTime || nowTs >= _runtime.lockEndTime) revert InvalidState();
     }
 }
