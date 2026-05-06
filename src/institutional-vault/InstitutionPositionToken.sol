@@ -60,7 +60,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
      * @notice Disabled — renouncing ownership would permanently brick minting and transfer governance.
      * @custom:error OwnershipCannotBeRenounced Always reverts.
      */
-    function renounceOwnership() public override {
+    function renounceOwnership() public pure override {
         revert OwnershipCannotBeRenounced();
     }
 

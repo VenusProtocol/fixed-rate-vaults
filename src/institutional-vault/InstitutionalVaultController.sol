@@ -604,7 +604,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @notice Disabled — renouncing ownership would permanently brick ACM-gated vault governance.
      * @custom:error OwnershipCannotBeRenounced Always reverts.
      */
-    function renounceOwnership() public override {
+    function renounceOwnership() public pure override {
         revert OwnershipCannotBeRenounced();
     }
 }
