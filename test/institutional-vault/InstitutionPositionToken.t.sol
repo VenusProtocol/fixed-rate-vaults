@@ -67,12 +67,12 @@ contract InstitutionPositionTokenTest is Test {
     function test_approveTransfer_byOwner() external {
         posToken.mint(institution, makeAddr("vault"));
 
-        vm.expectEmit(true, false, false, false);
-        emit InstitutionPositionToken.PositionTransferApproved(1);
+        vm.expectEmit(true, true, false, false);
+        emit InstitutionPositionToken.PositionTransferApproved(1, newInstitution);
 
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
 
-        assertTrue(posToken.transferApproved(1));
+        assertEq(posToken.approvedRecipient(1), newInstitution);
     }
 
     function test_approveTransfer_revertsIfNotOwner() external {
@@ -80,25 +80,32 @@ contract InstitutionPositionTokenTest is Test {
 
         vm.prank(other);
         vm.expectRevert("Ownable: caller is not the owner");
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
+    }
+
+    function test_approveTransfer_revertsForZeroRecipient() external {
+        posToken.mint(institution, makeAddr("vault"));
+
+        vm.expectRevert(InstitutionPositionToken.ZeroAddress.selector);
+        posToken.approveTransfer(1, address(0));
     }
 
     function test_revokeTransferApproval() external {
         posToken.mint(institution, makeAddr("vault"));
-        posToken.approveTransfer(1);
-        assertTrue(posToken.transferApproved(1));
+        posToken.approveTransfer(1, newInstitution);
+        assertEq(posToken.approvedRecipient(1), newInstitution);
 
         vm.expectEmit(true, false, false, false);
         emit InstitutionPositionToken.PositionTransferRevoked(1);
 
         posToken.revokeTransferApproval(1);
 
-        assertFalse(posToken.transferApproved(1));
+        assertEq(posToken.approvedRecipient(1), address(0));
     }
 
     function test_revokeTransferApproval_revertsIfNotOwner() external {
         posToken.mint(institution, makeAddr("vault"));
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
 
         vm.prank(other);
         vm.expectRevert("Ownable: caller is not the owner");
@@ -111,7 +118,7 @@ contract InstitutionPositionTokenTest is Test {
 
     function test_transferFrom_withApproval() external {
         posToken.mint(institution, makeAddr("vault"));
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
 
         vm.prank(institution);
         posToken.transferFrom(institution, newInstitution, 1);
@@ -127,18 +134,28 @@ contract InstitutionPositionTokenTest is Test {
         posToken.transferFrom(institution, newInstitution, 1);
     }
 
+    function test_transferFrom_revertsForUnapprovedRecipient() external {
+        posToken.mint(institution, makeAddr("vault"));
+        // Approval is bound to `newInstitution`; sending to `other` must revert.
+        posToken.approveTransfer(1, newInstitution);
+
+        vm.prank(institution);
+        vm.expectRevert(abi.encodeWithSelector(InstitutionPositionToken.TransferNotApproved.selector, 1));
+        posToken.transferFrom(institution, other, 1);
+    }
+
     function test_approvalConsumedAfterTransfer() external {
         posToken.mint(institution, makeAddr("vault"));
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
 
         vm.prank(institution);
         posToken.transferFrom(institution, newInstitution, 1);
 
-        // Approval flag must be cleared after the transfer.
-        assertFalse(posToken.transferApproved(1));
+        // Recipient slot must be cleared after the transfer.
+        assertEq(posToken.approvedRecipient(1), address(0));
 
-        // A second transfer should now revert.
-        posToken.approveTransfer(1);
+        // A second transfer should now revert until governance re-approves.
+        posToken.approveTransfer(1, other);
         posToken.revokeTransferApproval(1);
         vm.prank(newInstitution);
         vm.expectRevert(abi.encodeWithSelector(InstitutionPositionToken.TransferNotApproved.selector, 1));
@@ -147,7 +164,7 @@ contract InstitutionPositionTokenTest is Test {
 
     function test_safeTransferFrom_withApproval() external {
         posToken.mint(institution, makeAddr("vault"));
-        posToken.approveTransfer(1);
+        posToken.approveTransfer(1, newInstitution);
 
         vm.prank(institution);
         posToken.safeTransferFrom(institution, newInstitution, 1);

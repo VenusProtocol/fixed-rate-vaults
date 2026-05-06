@@ -296,17 +296,19 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
-     * @notice Approves transfer of the vault's position token.
+     * @notice Approves transfer of the vault's position token to a specific recipient.
      * @param vault Vault address.
+     * @param recipient The address that must be the destination of the next transfer.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */
     function approvePositionTransfer(
-        address vault
+        address vault,
+        address recipient
     ) external {
-        _checkAccessAllowed("approvePositionTransfer(address)");
+        _checkAccessAllowed("approvePositionTransfer(address,address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         uint256 tokenId = positionToken.vaultToTokenId(vault);
-        positionToken.approveTransfer(tokenId);
+        positionToken.approveTransfer(tokenId, recipient);
     }
 
     /**

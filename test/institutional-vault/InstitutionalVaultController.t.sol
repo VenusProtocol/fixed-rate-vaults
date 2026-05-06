@@ -561,9 +561,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         _depositMargin();
 
         // Approve + transfer NFT to a new holder.
-        controller.approvePositionTransfer(address(vault));
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
         address newHolder = makeAddr("newHolder");
+        controller.approvePositionTransfer(address(vault), newHolder);
         vm.prank(institution);
         posToken.transferFrom(institution, newHolder, tokenId);
 
@@ -844,13 +844,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         address vaultAddr = _createVault();
         InstitutionalLoanVault v = InstitutionalLoanVault(vaultAddr);
         uint256 tokenId = v.institutionalConfig().positionTokenId;
+        address recipient = makeAddr("newHolder");
 
         // Approve transfer via controller (ACM-gated).
-        controller.approvePositionTransfer(vaultAddr);
-        assertTrue(posToken.transferApproved(tokenId));
+        controller.approvePositionTransfer(vaultAddr, recipient);
+        assertEq(posToken.approvedRecipient(tokenId), recipient);
 
         // Revoke approval.
         controller.revokePositionTransfer(vaultAddr);
-        assertFalse(posToken.transferApproved(tokenId));
+        assertEq(posToken.approvedRecipient(tokenId), address(0));
     }
 }

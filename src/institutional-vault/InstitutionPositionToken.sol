@@ -26,15 +26,16 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     /// @notice Maps vault address to its token ID.
     mapping(address => uint256) public vaultToTokenId;
 
-    /// @notice Whether governance has approved the transfer of a specific token.
-    mapping(uint256 => bool) public transferApproved;
+    /// @notice Recipient governance has approved to receive a specific token (one-shot).
+    /// @dev Cleared back to address(0) once the matching transfer is consumed.
+    mapping(uint256 => address) public approvedRecipient;
 
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
 
     event PositionTokenMinted(address indexed vault, uint256 indexed tokenId, address indexed institution);
-    event PositionTransferApproved(uint256 indexed tokenId);
+    event PositionTransferApproved(uint256 indexed tokenId, address indexed recipient);
     event PositionTransferRevoked(uint256 indexed tokenId);
 
     // ──────────────────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
 
     error TransferNotApproved(uint256 tokenId);
     error OwnershipCannotBeRenounced();
+    error ZeroAddress();
 
     // ──────────────────────────────────────────────────────────────────────
     // Constructor
@@ -87,15 +89,19 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     }
 
     /**
-     * @notice Approves a token for transfer. One-time — resets after transfer.
+     * @notice Approves `recipient` to receive `tokenId` on the next transfer. One-shot — cleared after use.
      * @param tokenId The token ID to approve for transfer.
+     * @param recipient The address that must be the destination of the next transfer.
+     * @custom:error ZeroAddress If recipient is address(0).
      * @custom:event PositionTransferApproved
      */
     function approveTransfer(
-        uint256 tokenId
+        uint256 tokenId,
+        address recipient
     ) external onlyOwner {
-        transferApproved[tokenId] = true;
-        emit PositionTransferApproved(tokenId);
+        if (recipient == address(0)) revert ZeroAddress();
+        approvedRecipient[tokenId] = recipient;
+        emit PositionTransferApproved(tokenId, recipient);
     }
 
     /**
@@ -106,7 +112,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     function revokeTransferApproval(
         uint256 tokenId
     ) external onlyOwner {
-        transferApproved[tokenId] = false;
+        approvedRecipient[tokenId] = address(0);
         emit PositionTransferRevoked(tokenId);
     }
 
@@ -117,7 +123,7 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
     /**
      * @dev Overrides _beforeTokenTransfer to enforce governance-gated transfers.
      *      Minting (from == address(0)) is always allowed.
-     *      Transfers require transferApproved[tokenId] == true (one-time use).
+     *      Transfers require approvedRecipient[tokenId] == to (one-time use — cleared on consumption).
      */
     function _beforeTokenTransfer(
         address from,
@@ -129,8 +135,8 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
 
         // Allow minting
         if (from != address(0)) {
-            if (!transferApproved[firstTokenId]) revert TransferNotApproved(firstTokenId);
-            transferApproved[firstTokenId] = false; // one-time use
+            if (approvedRecipient[firstTokenId] != to) revert TransferNotApproved(firstTokenId);
+            approvedRecipient[firstTokenId] = address(0); // one-time use
         }
     }
 }

@@ -187,7 +187,7 @@ abstract contract VaultTestBase is Test {
             "completePauseVault(address)",
             "unpauseVault(address)",
             "closeVault(address)",
-            "approvePositionTransfer(address)",
+            "approvePositionTransfer(address,address)",
             "revokePositionTransfer(address)",
             "setLiquidationThreshold(address,uint256)",
             "setLiquidationIncentive(address,uint256)",
