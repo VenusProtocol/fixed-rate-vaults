@@ -488,7 +488,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     /**
      * @dev Internal deposit — min deposit check, share minting, totalRaised update.
      *      State check and advance are handled by the public wrappers (deposit/mint).
-     * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured minimum.
+     *      The minimum-deposit floor is waived for the final residual tail
+     *      (`assets == maxBorrowCap - totalRaised`) so a sub-minimum leftover capacity
+     *      can still be filled and the cap can actually be reached.
+     * @custom:error BelowMinimumDepositAmount If deposit amount is below the configured
+     *               minimum and is not the final residual tail.
      */
     function _deposit(
         address caller,
@@ -496,7 +500,11 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         uint256 assets,
         uint256 shares
     ) internal override nonReentrant whenNotPaused {
-        if (_config.minSupplierDeposit > 0 && assets < _config.minSupplierDeposit) revert BelowMinimumDepositAmount();
+        uint256 floor = _config.minSupplierDeposit;
+        if (floor > 0 && assets < floor) {
+            uint256 remaining = _config.maxBorrowCap - _runtime.totalRaised;
+            if (assets < remaining) revert BelowMinimumDepositAmount();
+        }
         super._deposit(caller, receiver, assets, shares);
         _runtime.totalRaised += assets;
     }
@@ -554,7 +562,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         address payer,
         uint256 amount
     ) internal {
-        uint256 debt = _runtime.totalDebt;
+        uint256 debt = _outstandingDebt();
         uint256 actual = amount > debt ? debt : amount;
         if (actual == 0) return;
         _runtime.totalDebt -= actual;
@@ -635,11 +643,15 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
 
     /**
      * @dev Hook called at the start of _claimRaisedFunds to validate vault state.
-     *      Default implementation requires Lock state.
+     *      Default implementation requires Lock state and that block.timestamp lies inside
+     *      [lockStartTime, lockEndTime).
      *      Override in subcontracts to enforce a different state requirement.
-     * @custom:error InvalidState If the vault is not in the required state.
+     * @custom:error InvalidState If the vault is not in Lock or block.timestamp is outside
+     *               the [lockStartTime, lockEndTime) window.
      */
     function _beforeClaimRaisedFunds() internal virtual {
         if (_runtime.state != VaultState.Lock) revert InvalidState();
+        uint256 nowTs = block.timestamp;
+        if (nowTs < _runtime.lockStartTime || nowTs >= _runtime.lockEndTime) revert InvalidState();
     }
 }

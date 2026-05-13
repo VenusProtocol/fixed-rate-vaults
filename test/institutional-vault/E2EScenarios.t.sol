@@ -505,11 +505,11 @@ contract E2EScenariosTest is VaultTestBase {
     function test_e2e_positionTransfer_newHolderCompletesCycle() external {
         _openVault(); // institution deposits MARGIN_AMOUNT
 
-        // Governance approves position token transfer.
-        controller.approvePositionTransfer(address(vault));
-
         address newHolder = makeAddr("newHolder");
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
+
+        // Governance approves position token transfer to the new holder.
+        controller.approvePositionTransfer(address(vault), newHolder);
 
         // Institution transfers position NFT to new holder.
         vm.prank(institution);

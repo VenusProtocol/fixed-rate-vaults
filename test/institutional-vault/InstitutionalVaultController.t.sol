@@ -439,6 +439,26 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(cfg, instCfg, rc, "Inst Vault", "IV");
     }
 
+    function test_createVault_revertsIfSupplyAssetOraclePriceIsZero() external {
+        // Mock the oracle to return 0 for the supply asset — the probe in
+        // _validateVaultConfig should catch it before the clone is deployed.
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(supply)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfCollateralAssetOraclePriceIsZero() external {
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(collateral)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 5C — Vault Lifecycle Proxied Calls
     // ──────────────────────────────────────────────────────────────────────
@@ -541,9 +561,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         _depositMargin();
 
         // Approve + transfer NFT to a new holder.
-        controller.approvePositionTransfer(address(vault));
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
         address newHolder = makeAddr("newHolder");
+        controller.approvePositionTransfer(address(vault), newHolder);
         vm.prank(institution);
         posToken.transferFrom(institution, newHolder, tokenId);
 
@@ -824,13 +844,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         address vaultAddr = _createVault();
         InstitutionalLoanVault v = InstitutionalLoanVault(vaultAddr);
         uint256 tokenId = v.institutionalConfig().positionTokenId;
+        address recipient = makeAddr("newHolder");
 
         // Approve transfer via controller (ACM-gated).
-        controller.approvePositionTransfer(vaultAddr);
-        assertTrue(posToken.transferApproved(tokenId));
+        controller.approvePositionTransfer(vaultAddr, recipient);
+        assertEq(posToken.approvedRecipient(tokenId), recipient);
 
         // Revoke approval.
         controller.revokePositionTransfer(vaultAddr);
-        assertFalse(posToken.transferApproved(tokenId));
+        assertEq(posToken.approvedRecipient(tokenId), address(0));
     }
 }

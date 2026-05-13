@@ -110,11 +110,13 @@ interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Approves transfer of the vault's position token.
+     * @notice Approves transfer of the vault's position token to a specific recipient.
      * @param vault Vault address whose position token transfer is approved.
+     * @param recipient The address that must be the destination of the next transfer.
      */
     function approvePositionTransfer(
-        address vault
+        address vault,
+        address recipient
     ) external;
 
     /**

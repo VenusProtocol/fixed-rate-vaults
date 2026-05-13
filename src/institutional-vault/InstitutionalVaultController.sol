@@ -10,6 +10,7 @@ import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/I
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
+import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
 /**
  * @title InstitutionalVaultController
@@ -295,17 +296,19 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
-     * @notice Approves transfer of the vault's position token.
+     * @notice Approves transfer of the vault's position token to a specific recipient.
      * @param vault Vault address.
+     * @param recipient The address that must be the destination of the next transfer.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */
     function approvePositionTransfer(
-        address vault
+        address vault,
+        address recipient
     ) external {
-        _checkAccessAllowed("approvePositionTransfer(address)");
+        _checkAccessAllowed("approvePositionTransfer(address,address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         uint256 tokenId = positionToken.vaultToTokenId(vault);
-        positionToken.approveTransfer(tokenId);
+        positionToken.approveTransfer(tokenId, recipient);
     }
 
     /**
@@ -499,7 +502,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     function getAggregatedVaultStates() external view returns (VaultStateInfo[] memory) {
         uint256 len = allVaults.length;
         VaultStateInfo[] memory infos = new VaultStateInfo[](len);
-        for (uint256 i; i < len;) {
+        for (uint256 i; i < len; ++i) {
             address v = allVaults[i];
             IInstitutionalLoanVault vault = IInstitutionalLoanVault(v);
             infos[i] = VaultStateInfo({
@@ -509,9 +512,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
                 totalRaised: vault.runtime().totalRaised,
                 outstandingDebt: vault.outstandingDebt()
             });
-            unchecked {
-                ++i;
-            }
         }
         return infos;
     }
@@ -525,29 +525,17 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Internal — Pure
+    // Internal — View
     // ──────────────────────────────────────────────────────────────────────
 
-    /// @dev Assembles InstitutionalConfig with the minted tokenId.
-    function _assembleInstConfig(
-        InstitutionalConfig calldata c,
-        uint256 tokenId
-    ) internal pure returns (InstitutionalConfig memory) {
-        return InstitutionalConfig({
-            collateralAsset: c.collateralAsset,
-            idealCollateralAmount: c.idealCollateralAmount,
-            marginRate: c.marginRate,
-            institutionOperator: c.institutionOperator,
-            positionTokenId: tokenId
-        });
-    }
-
     /// @dev Validates shared vault config, institutional config, and risk config at creation.
+    ///      Also probes the resilient oracle to confirm both supply and collateral assets are
+    ///      priced — a vault with an unsupported asset would later stall in price-dependent logic.
     function _validateVaultConfig(
         VaultConfig calldata vaultConfig,
         InstitutionalConfig calldata instConfig,
         RiskConfig calldata riskConfig
-    ) internal pure {
+    ) internal view {
         // Shared config validation
         if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
         if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
@@ -574,6 +562,34 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         }
         _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.liquidationIncentive);
         _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.latePenaltyRate);
+        // Oracle support — both assets must have a non-zero price.
+        _validateAssetPrice(address(vaultConfig.supplyAsset));
+        _validateAssetPrice(address(instConfig.collateralAsset));
+    }
+
+    /// @dev Reverts if the resilient oracle returns a zero price for `asset`.
+    function _validateAssetPrice(
+        address asset
+    ) private view {
+        if (IResilientOracle(oracle).getPrice(asset) == 0) revert InvalidConfig();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — Pure
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Assembles InstitutionalConfig with the minted tokenId.
+    function _assembleInstConfig(
+        InstitutionalConfig calldata c,
+        uint256 tokenId
+    ) internal pure returns (InstitutionalConfig memory) {
+        return InstitutionalConfig({
+            collateralAsset: c.collateralAsset,
+            idealCollateralAmount: c.idealCollateralAmount,
+            marginRate: c.marginRate,
+            institutionOperator: c.institutionOperator,
+            positionTokenId: tokenId
+        });
     }
 
     /// @dev Reverts if `riskFactor * lt` reaches 1e36 (i.e. >= 1.0 in mantissa).
@@ -590,7 +606,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @notice Disabled — renouncing ownership would permanently brick ACM-gated vault governance.
      * @custom:error OwnershipCannotBeRenounced Always reverts.
      */
-    function renounceOwnership() public override {
+    function renounceOwnership() public pure override {
         revert OwnershipCannotBeRenounced();
     }
 }

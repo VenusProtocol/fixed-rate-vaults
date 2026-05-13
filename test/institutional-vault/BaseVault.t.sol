@@ -342,6 +342,74 @@ contract BaseVaultTest is Test {
         vm.stopPrank();
     }
 
+    function test_deposit_residualTailBelowMinimum() external {
+        // Vault with non-zero minSupplierDeposit; final supplier should be able to top off
+        // a residual tail strictly smaller than the minimum.
+        TestVault impl = new TestVault();
+        VaultConfig memory cfg = _buildConfig();
+        cfg.minSupplierDeposit = 1000e18;
+        TestVault vaultWithMin = TestVault(
+            address(
+                new TransparentUpgradeableProxy(
+                    address(impl), proxyAdmin, abi.encodeCall(TestVault.initialize, (cfg, address(mockVaultController)))
+                )
+            )
+        );
+
+        // Fill almost to cap, leaving a 100e18 residual (below the 1000e18 minimum).
+        uint256 residual = 100e18;
+        uint256 firstDeposit = MAX_CAP - residual;
+        supply.mint(lender1, firstDeposit);
+        vm.startPrank(lender1);
+        supply.approve(address(vaultWithMin), firstDeposit);
+        vaultWithMin.deposit(firstDeposit, lender1);
+        vm.stopPrank();
+
+        // Sanity: tail capacity is exactly residual and residual < minSupplierDeposit.
+        assertEq(vaultWithMin.maxDeposit(lender2), residual);
+
+        // lender2 fills exactly the tail — below min, but allowed because it equals remaining.
+        supply.mint(lender2, residual);
+        vm.startPrank(lender2);
+        supply.approve(address(vaultWithMin), residual);
+        vaultWithMin.deposit(residual, lender2);
+        vm.stopPrank();
+
+        assertEq(vaultWithMin.runtime().totalRaised, MAX_CAP);
+    }
+
+    function test_deposit_residualTail_belowMinAndBelowRemainingReverts() external {
+        // Boundary: residual capacity is below the minimum, but the supplier deposits
+        // less than the residual — that's NOT the final tail, so it must still revert.
+        TestVault impl = new TestVault();
+        VaultConfig memory cfg = _buildConfig();
+        cfg.minSupplierDeposit = 1000e18;
+        TestVault vaultWithMin = TestVault(
+            address(
+                new TransparentUpgradeableProxy(
+                    address(impl), proxyAdmin, abi.encodeCall(TestVault.initialize, (cfg, address(mockVaultController)))
+                )
+            )
+        );
+
+        uint256 residual = 100e18;
+        uint256 firstDeposit = MAX_CAP - residual;
+        supply.mint(lender1, firstDeposit);
+        vm.startPrank(lender1);
+        supply.approve(address(vaultWithMin), firstDeposit);
+        vaultWithMin.deposit(firstDeposit, lender1);
+        vm.stopPrank();
+
+        // lender2 tries to deposit 50e18 — below min, below residual: must revert.
+        uint256 belowResidual = 50e18;
+        supply.mint(lender2, belowResidual);
+        vm.startPrank(lender2);
+        supply.approve(address(vaultWithMin), belowResidual);
+        vm.expectRevert(BaseVault.BelowMinimumDepositAmount.selector);
+        vaultWithMin.deposit(belowResidual, lender2);
+        vm.stopPrank();
+    }
+
     function test_mint_basic() external {
         uint256 sharesToMint = 100e18;
         uint256 expectedAssets = vault.previewMint(sharesToMint);
