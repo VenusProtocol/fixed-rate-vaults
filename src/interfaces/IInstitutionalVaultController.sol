@@ -53,6 +53,16 @@ interface IInstitutionalVaultController is IVaultController {
     ) external;
 
     /**
+     * @notice Cancels a pre-launch vault and refunds any deposited collateral to the NFT position holder.
+     *         Callable only on a vault still in WaitingForMargin or MarginDeposited.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function cancelVault(
+        address vault
+    ) external;
+
+    /**
      * @notice Transitions vault to Closed state. All operations are blocked after this point.
      * @param vault Vault address to close.
      */
@@ -100,11 +110,13 @@ interface IInstitutionalVaultController is IVaultController {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Approves transfer of the vault's position token.
+     * @notice Approves transfer of the vault's position token to a specific recipient.
      * @param vault Vault address whose position token transfer is approved.
+     * @param recipient The address that must be the destination of the next transfer.
      */
     function approvePositionTransfer(
-        address vault
+        address vault,
+        address recipient
     ) external;
 
     /**

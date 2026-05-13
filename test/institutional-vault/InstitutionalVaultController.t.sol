@@ -320,10 +320,11 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
 
-    function test_createVault_ltAtMantissa_succeeds() external {
+    function test_createVault_revertsIfLtAtMantissa() external {
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationThreshold = MANTISSA_ONE;
 
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
 
@@ -373,6 +374,43 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
     }
 
+    // ──────────────────────────────────────────────────────────────────────
+    // LI*LT and latePenaltyRate*LT < 1.0 invariants
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_createVault_revertsIfLiTimesLtAtOrAboveOne() external {
+        // LT = 0.95e18, LI = 1.10e18 → LI*LT = 1.045e36 ≥ 1e36, must revert.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.95e18;
+        rc.liquidationIncentive = 1.1e18;
+        rc.latePenaltyRate = 1.05e18; // keep latePenalty*LT < 1 so LI invariant fires first
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfLatePenaltyTimesLtAtOrAboveOne() external {
+        // LT = 0.95e18, LI = 1.04e18 (LI*LT = 0.988e36 < 1e36),
+        // latePenalty = 1.10e18 → latePenalty*LT = 1.045e36 ≥ 1e36, must revert.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.95e18;
+        rc.liquidationIncentive = 1.04e18;
+        rc.latePenaltyRate = 1.1e18;
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
+    function test_createVault_liTimesLtJustBelowOne_succeeds() external {
+        // LT = 0.9e18, LI = 1.10e18 → LI*LT = 0.99e36 < 1e36; latePenalty same → 0.99e36 < 1e36.
+        RiskConfig memory rc = _buildRiskConfig();
+        rc.liquidationThreshold = 0.9e18;
+        rc.liquidationIncentive = 1.1e18;
+        rc.latePenaltyRate = 1.1e18;
+
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+    }
+
     function test_createVault_allMinimumValidParams_succeeds() external {
         VaultConfig memory cfg = VaultConfig({
             supplyAsset: IERC20(address(supply)),
@@ -399,6 +437,26 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         });
 
         controller.createVault(cfg, instCfg, rc, "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfSupplyAssetOraclePriceIsZero() external {
+        // Mock the oracle to return 0 for the supply asset — the probe in
+        // _validateVaultConfig should catch it before the clone is deployed.
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(supply)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
+    function test_createVault_revertsIfCollateralAssetOraclePriceIsZero() external {
+        vm.mockCall(
+            address(oracle), abi.encodeWithSignature("getPrice(address)", address(collateral)), abi.encode(uint256(0))
+        );
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -468,6 +526,123 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
     }
 
     // ──────────────────────────────────────────────────────────────────────
+    // 5C.1 — cancelVault
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Deposits the full margin into a fresh vault, leaving it in MarginDeposited.
+    function _depositMargin() internal {
+        collateral.mint(institution, MARGIN_AMOUNT);
+        vm.startPrank(institution);
+        collateral.approve(address(vault), MARGIN_AMOUNT);
+        vault.depositCollateral(MARGIN_AMOUNT);
+        vm.stopPrank();
+    }
+
+    function test_cancelVault_happyPath() external {
+        _createVault();
+        _depositMargin();
+        assertEq(uint8(vault.state()), uint8(VaultState.MarginDeposited));
+
+        uint256 institutionBalanceBefore = collateral.balanceOf(institution);
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalLoanVault.VaultCancelled(institution, MARGIN_AMOUNT);
+
+        controller.cancelVault(address(vault));
+
+        // State transition to Failed implicitly verifies VaultFailed was emitted.
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+        assertEq(vault.institutionalRuntime().totalCollateralDeposited, 0);
+        assertEq(collateral.balanceOf(institution) - institutionBalanceBefore, MARGIN_AMOUNT);
+    }
+
+    function test_cancelVault_routesToCurrentNftHolder() external {
+        _createVault();
+        _depositMargin();
+
+        // Approve + transfer NFT to a new holder.
+        uint256 tokenId = vault.institutionalConfig().positionTokenId;
+        address newHolder = makeAddr("newHolder");
+        controller.approvePositionTransfer(address(vault), newHolder);
+        vm.prank(institution);
+        posToken.transferFrom(institution, newHolder, tokenId);
+
+        uint256 institutionBalanceBefore = collateral.balanceOf(institution);
+        uint256 newHolderBalanceBefore = collateral.balanceOf(newHolder);
+
+        controller.cancelVault(address(vault));
+
+        // Refund lands at the current NFT holder, not the original institution.
+        assertEq(collateral.balanceOf(institution), institutionBalanceBefore);
+        assertEq(collateral.balanceOf(newHolder) - newHolderBalanceBefore, MARGIN_AMOUNT);
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+    }
+
+    function test_cancelVault_revertsIfFundraising() external {
+        _createVault();
+        _openVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Fundraising));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.cancelVault(address(vault));
+    }
+
+    function test_cancelVault_revertsIfLock() external {
+        _createVault();
+        _openVault();
+        _lockVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Lock));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.cancelVault(address(vault));
+    }
+
+    function test_cancelVault_revertsIfMatured() external {
+        _createVault();
+        _openVault();
+        _lockVault();
+        _settleVault();
+        assertEq(uint8(vault.state()), uint8(VaultState.Matured));
+
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.cancelVault(address(vault));
+    }
+
+    function test_cancelVault_revertsIfFailed() external {
+        _createVault();
+        _depositMargin();
+        controller.cancelVault(address(vault));
+        assertEq(uint8(vault.state()), uint8(VaultState.Failed));
+
+        // Already-failed vault — second call must revert.
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        controller.cancelVault(address(vault));
+    }
+
+    function test_cancelVault_revertsIfNotACM() external {
+        _createVault();
+        _depositMargin();
+
+        vm.prank(lender1);
+        vm.expectRevert();
+        controller.cancelVault(address(vault));
+    }
+
+    function test_cancelVault_revertsIfVaultNotRegistered() external {
+        vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
+        controller.cancelVault(makeAddr("unknownVault"));
+    }
+
+    function test_cancelVault_revertsIfDirectVaultCall() external {
+        _createVault();
+        _depositMargin();
+
+        vm.prank(institution);
+        vm.expectRevert(BaseVault.Unauthorized.selector);
+        vault.cancelVault();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
     // 5D — Risk Parameter Proxied Calls
     // ──────────────────────────────────────────────────────────────────────
 
@@ -518,6 +693,38 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
 
         vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
         controller.setLatePenaltyRate(unknown, 1.2e18);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Setter cross-validation against live values
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_setLiquidationThreshold_revertsIfNewLtBreaksLiInvariant() external {
+        _createVault(); // defaults: LT=0.75e18, LI=1.10e18, latePenalty=1.15e18
+        // newLT = 0.95e18 → newLT * LI = 1.045e36 ≥ 1e36; LI invariant fires first.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationThreshold(address(vault), 0.95e18);
+    }
+
+    function test_setLiquidationThreshold_revertsIfNewLtBreaksLatePenaltyInvariant() external {
+        _createVault(); // defaults: LT=0.75e18, LI=1.10e18, latePenalty=1.15e18
+        // newLT = 0.9e18 → newLT * LI = 0.99e36 < 1e36 (passes), but newLT * latePenalty = 1.035e36 ≥ 1e36.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationThreshold(address(vault), 0.9e18);
+    }
+
+    function test_setLiquidationIncentive_revertsIfNewLiBreaksLtInvariant() external {
+        _createVault(); // live LT = 0.75e18
+        // newLI = 1.4e18 → live LT * newLI = 1.05e36 ≥ 1e36, must revert.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLiquidationIncentive(address(vault), 1.4e18);
+    }
+
+    function test_setLatePenaltyRate_revertsIfNewRateBreaksLtInvariant() external {
+        _createVault(); // live LT = 0.75e18
+        // newRate = 1.4e18 → live LT * newRate = 1.05e36 ≥ 1e36, must revert.
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setLatePenaltyRate(address(vault), 1.4e18);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -637,13 +844,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         address vaultAddr = _createVault();
         InstitutionalLoanVault v = InstitutionalLoanVault(vaultAddr);
         uint256 tokenId = v.institutionalConfig().positionTokenId;
+        address recipient = makeAddr("newHolder");
 
         // Approve transfer via controller (ACM-gated).
-        controller.approvePositionTransfer(vaultAddr);
-        assertTrue(posToken.transferApproved(tokenId));
+        controller.approvePositionTransfer(vaultAddr, recipient);
+        assertEq(posToken.approvedRecipient(tokenId), recipient);
 
         // Revoke approval.
         controller.revokePositionTransfer(vaultAddr);
-        assertFalse(posToken.transferApproved(tokenId));
+        assertEq(posToken.approvedRecipient(tokenId), address(0));
     }
 }

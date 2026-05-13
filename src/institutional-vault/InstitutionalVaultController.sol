@@ -10,6 +10,7 @@ import { InstitutionalConfig, RiskConfig, VaultStateInfo } from "../interfaces/I
 import { IInstitutionalLoanVault } from "../interfaces/IInstitutionalLoanVault.sol";
 import { IInstitutionPositionToken } from "../interfaces/IInstitutionPositionToken.sol";
 import { IInstitutionalVaultController } from "../interfaces/IInstitutionalVaultController.sol";
+import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
 
 /**
  * @title InstitutionalVaultController
@@ -214,6 +215,20 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
+     * @notice Cancels a pre-launch vault and refunds any deposited collateral to the NFT position holder.
+     *         Callable only on a vault still in WaitingForMargin or MarginDeposited.
+     * @param vault Vault address.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     */
+    function cancelVault(
+        address vault
+    ) external {
+        _checkAccessAllowed("cancelVault(address)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        IInstitutionalLoanVault(vault).cancelVault();
+    }
+
+    /**
      * @notice Partial pause — blocks general operations; repay and liquidation remain available.
      * @param vault Vault address.
      * @custom:error VaultNotRegistered If vault is not in the registry.
@@ -281,17 +296,19 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
-     * @notice Approves transfer of the vault's position token.
+     * @notice Approves transfer of the vault's position token to a specific recipient.
      * @param vault Vault address.
+     * @param recipient The address that must be the destination of the next transfer.
      * @custom:error VaultNotRegistered If vault is not in the registry.
      */
     function approvePositionTransfer(
-        address vault
+        address vault,
+        address recipient
     ) external {
-        _checkAccessAllowed("approvePositionTransfer(address)");
+        _checkAccessAllowed("approvePositionTransfer(address,address)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         uint256 tokenId = positionToken.vaultToTokenId(vault);
-        positionToken.approveTransfer(tokenId);
+        positionToken.approveTransfer(tokenId, recipient);
     }
 
     /**
@@ -323,6 +340,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationThreshold(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLT == 0 || newLT > MANTISSA_ONE) revert InvalidLiquidationThreshold();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(newLT, rc.liquidationIncentive);
+        _validateLiquidationInvariant(newLT, rc.latePenaltyRate);
         emit LiquidationThresholdUpdated(vault, newLT);
         IInstitutionalLoanVault(vault).setLiquidationThreshold(newLT);
     }
@@ -342,6 +362,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLiquidationIncentive(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newLI <= MANTISSA_ONE || newLI > MANTISSA_ONE_AND_HALF) revert InvalidLiquidationIncentive();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(rc.liquidationThreshold, newLI);
         emit LiquidationIncentiveUpdated(vault, newLI);
         IInstitutionalLoanVault(vault).setLiquidationIncentive(newLI);
     }
@@ -361,6 +383,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setLatePenaltyRate(address,uint256)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (newRate <= MANTISSA_ONE || newRate > MANTISSA_ONE_AND_HALF) revert InvalidLatePenaltyRate();
+        RiskConfig memory rc = IInstitutionalLoanVault(vault).riskConfig();
+        _validateLiquidationInvariant(rc.liquidationThreshold, newRate);
         emit LatePenaltyRateUpdated(vault, newRate);
         IInstitutionalLoanVault(vault).setLatePenaltyRate(newRate);
     }
@@ -478,7 +502,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     function getAggregatedVaultStates() external view returns (VaultStateInfo[] memory) {
         uint256 len = allVaults.length;
         VaultStateInfo[] memory infos = new VaultStateInfo[](len);
-        for (uint256 i; i < len;) {
+        for (uint256 i; i < len; ++i) {
             address v = allVaults[i];
             IInstitutionalLoanVault vault = IInstitutionalLoanVault(v);
             infos[i] = VaultStateInfo({
@@ -488,9 +512,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
                 totalRaised: vault.runtime().totalRaised,
                 outstandingDebt: vault.outstandingDebt()
             });
-            unchecked {
-                ++i;
-            }
         }
         return infos;
     }
@@ -501,6 +522,56 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      */
     function allVaultsLength() external view returns (uint256) {
         return allVaults.length;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Internal — View
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Validates shared vault config, institutional config, and risk config at creation.
+    ///      Also probes the resilient oracle to confirm both supply and collateral assets are
+    ///      priced — a vault with an unsupported asset would later stall in price-dependent logic.
+    function _validateVaultConfig(
+        VaultConfig calldata vaultConfig,
+        InstitutionalConfig calldata instConfig,
+        RiskConfig calldata riskConfig
+    ) internal view {
+        // Shared config validation
+        if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
+        if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
+        if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) {
+            revert InvalidConfig();
+        }
+        if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) {
+            revert InvalidConfig();
+        }
+        if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
+        if (vaultConfig.fixedAPY == 0 || vaultConfig.fixedAPY > MAX_APY_BPS) revert InvalidConfig();
+        if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
+        // Institutional config validation
+        if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
+        if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
+        if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA_ONE) revert InvalidConfig();
+        // Risk config validation
+        if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA_ONE) {
+            revert InvalidConfig();
+        }
+        if (riskConfig.liquidationIncentive <= MANTISSA_ONE || riskConfig.liquidationIncentive > MANTISSA_ONE_AND_HALF) revert InvalidConfig();
+        if (riskConfig.latePenaltyRate <= MANTISSA_ONE || riskConfig.latePenaltyRate > MANTISSA_ONE_AND_HALF) {
+            revert InvalidConfig();
+        }
+        _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.liquidationIncentive);
+        _validateLiquidationInvariant(riskConfig.liquidationThreshold, riskConfig.latePenaltyRate);
+        // Oracle support — both assets must have a non-zero price.
+        _validateAssetPrice(address(vaultConfig.supplyAsset));
+        _validateAssetPrice(address(instConfig.collateralAsset));
+    }
+
+    /// @dev Reverts if the resilient oracle returns a zero price for `asset`.
+    function _validateAssetPrice(
+        address asset
+    ) private view {
+        if (IResilientOracle(oracle).getPrice(asset) == 0) revert InvalidConfig();
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -521,44 +592,21 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         });
     }
 
-    /// @dev Validates shared vault config, institutional config, and risk config at creation.
-    function _validateVaultConfig(
-        VaultConfig calldata vaultConfig,
-        InstitutionalConfig calldata instConfig,
-        RiskConfig calldata riskConfig
-    ) internal pure {
-        // Shared config validation
-        if (address(vaultConfig.supplyAsset) == address(0)) revert InvalidConfig();
-        if (address(instConfig.collateralAsset) == address(0)) revert InvalidConfig();
-        if (vaultConfig.minBorrowCap == 0 || vaultConfig.minBorrowCap > vaultConfig.maxBorrowCap) {
-            revert InvalidConfig();
-        }
-        if (vaultConfig.maxBorrowCap == 0) revert InvalidConfig();
-        if (vaultConfig.openDuration == 0 || vaultConfig.lockDuration == 0 || vaultConfig.settlementWindow == 0) {
-            revert InvalidConfig();
-        }
-        if (address(vaultConfig.supplyAsset) == address(instConfig.collateralAsset)) revert InvalidConfig();
-        if (vaultConfig.fixedAPY == 0 || vaultConfig.fixedAPY > MAX_APY_BPS) revert InvalidConfig();
-        if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
-        // Institutional config validation
-        if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
-        if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
-        if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA_ONE) revert InvalidConfig();
-        // Risk config validation
-        if (riskConfig.liquidationThreshold == 0 || riskConfig.liquidationThreshold > MANTISSA_ONE) {
-            revert InvalidConfig();
-        }
-        if (riskConfig.liquidationIncentive <= MANTISSA_ONE || riskConfig.liquidationIncentive > MANTISSA_ONE_AND_HALF) revert InvalidConfig();
-        if (riskConfig.latePenaltyRate <= MANTISSA_ONE || riskConfig.latePenaltyRate > MANTISSA_ONE_AND_HALF) {
-            revert InvalidConfig();
-        }
+    /// @dev Reverts if `riskFactor * lt` reaches 1e36 (i.e. >= 1.0 in mantissa).
+    ///      A product >= 1.0 means liquidations would worsen vault health rather than improve it.
+    ///      Used for both `LI * LT` and `latePenaltyRate * LT` checks.
+    function _validateLiquidationInvariant(
+        uint256 lt,
+        uint256 riskFactor
+    ) private pure {
+        if (riskFactor * lt >= MANTISSA_ONE * MANTISSA_ONE) revert InvalidConfig();
     }
 
     /**
      * @notice Disabled — renouncing ownership would permanently brick ACM-gated vault governance.
      * @custom:error OwnershipCannotBeRenounced Always reverts.
      */
-    function renounceOwnership() public override {
+    function renounceOwnership() public pure override {
         revert OwnershipCannotBeRenounced();
     }
 }

@@ -998,7 +998,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         address newHolder = makeAddr("newHolder");
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newHolder);
         controller.revokePositionTransfer(address(vault));
 
         vm.prank(institution);
@@ -1018,7 +1018,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         address newHolder = makeAddr("newHolder");
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newHolder);
         vm.prank(institution);
         posToken.safeTransferFrom(institution, newHolder, tokenId);
 
@@ -1045,9 +1045,10 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
     function test_fork_positionTransfer_newHolderCompletesCycle() external {
         _openVault();
 
-        controller.approvePositionTransfer(address(vault));
         address newHolder = makeAddr("newHolder");
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
+
+        controller.approvePositionTransfer(address(vault), newHolder);
 
         vm.prank(institution);
         posToken.safeTransferFrom(institution, newHolder, tokenId);
@@ -1577,7 +1578,7 @@ contract InstitutionalLoanVaultForkTest is VaultTestBase {
         address newHolder = makeAddr("newHolder");
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
-        // No controller.approvePositionTransfer(address(vault)) call: transferApproved[tokenId] stays false.
+        // No controller.approvePositionTransfer(address(vault), newHolder) call: approvedRecipient[tokenId] stays zero.
         vm.prank(institution);
         vm.expectRevert(abi.encodeWithSelector(InstitutionPositionToken.TransferNotApproved.selector, tokenId));
         posToken.safeTransferFrom(institution, newHolder, tokenId);

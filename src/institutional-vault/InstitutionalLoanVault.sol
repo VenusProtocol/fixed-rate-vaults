@@ -63,6 +63,7 @@ contract InstitutionalLoanVault is BaseVault {
     event OverdueLiquidationExecuted(address indexed settler, uint256 repayAmount, uint256 collateralSeized);
     event MarginConfiscated(uint256 marginAmount);
     event MarginCompensationClaimed(address indexed receiver, uint256 amount);
+    event VaultCancelled(address indexed recipient, uint256 collateralAmount);
     event LiquidationThresholdUpdated(uint256 oldLT, uint256 newLT);
     event LiquidationIncentiveUpdated(uint256 oldLI, uint256 newLI);
     event LatePenaltyRateUpdated(uint256 oldRate, uint256 newRate);
@@ -71,7 +72,6 @@ contract InstitutionalLoanVault is BaseVault {
     // Errors
     // ──────────────────────────────────────────────────────────────────────
 
-    error ZeroAddress();
     error InsufficientCollateral();
     error NotPositionHolder();
     error PositionTokenIdNotSet();
@@ -164,6 +164,31 @@ contract InstitutionalLoanVault is BaseVault {
         _runtime.settlementDeadline = lockEnd + _config.settlementWindow;
         emit VaultOpened(openEnd);
         _stateTransition(VaultState.Fundraising);
+    }
+
+    /**
+     * @notice Cancels a vault that has not yet launched and refunds any deposited collateral
+     *         to the NFT position holder. Restricted to the two pre-launch states:
+     *         WaitingForMargin (no collateral yet) or MarginDeposited (margin in escrow).
+     *         Uses positionToken.ownerOf so any approved NFT transfer is honoured.
+     * @custom:error InvalidState If vault is not in WaitingForMargin or MarginDeposited.
+     * @custom:event VaultCancelled Emitted with the position-holder recipient and refunded collateral amount.
+     * @custom:event StateTransition Emitted by _stateTransition for WaitingForMargin/MarginDeposited -> Failed.
+     */
+    function cancelVault() external onlyController nonReentrant {
+        VaultState s = _runtime.state;
+        if (s != VaultState.WaitingForMargin && s != VaultState.MarginDeposited) revert InvalidState();
+
+        address recipient = positionToken.ownerOf(_instConfig.positionTokenId);
+        uint256 amount = _instRuntime.totalCollateralDeposited;
+
+        _stateTransition(VaultState.Failed);
+
+        if (amount > 0) {
+            _releaseCollateral(recipient, amount);
+        }
+
+        emit VaultCancelled(recipient, amount);
     }
 
     /**
@@ -300,7 +325,8 @@ contract InstitutionalLoanVault is BaseVault {
 
     /**
      * @notice Deposits collateral into the vault.
-     *         - WaitingForMargin: cumulative deposits must reach margin amount to transition to MarginDeposited.
+     *         - WaitingForMargin: the full margin amount must be deposited in a single transaction
+     *           to transition to MarginDeposited; partial deposits revert.
      *         - Fundraising: institution deposits remaining collateral alongside lender fundraising.
      *         - Lock: top-up collateral.
      * @param amount Amount of collateral tokens to deposit.
@@ -500,7 +526,10 @@ contract InstitutionalLoanVault is BaseVault {
         VaultState s = _runtime.state;
         uint256 currentTime = block.timestamp;
 
-        // Fundraising -> Lock (collateral sufficient) or Failed
+        // Fundraising -> Lock (collateral sufficient) or Failed.
+        // After Lock, fall through to the Lock/PendingSettlement chain so a vault dormant past
+        // openEndTime catches up to its time-correct state in a single call (instead of stopping
+        // at Lock and allowing a late claimRaisedFunds to slip through).
         if (s == VaultState.Fundraising) {
             if (currentTime < _runtime.openEndTime) return s;
             uint256 totalRaised = _runtime.totalRaised;
@@ -509,10 +538,11 @@ contract InstitutionalLoanVault is BaseVault {
                     && _instRuntime.totalCollateralDeposited >= _instConfig.idealCollateralAmount
             ) {
                 _enterLock(totalRaised);
+                s = VaultState.Lock; // continue down to Lock fall-through
             } else {
                 _enterFailed(totalRaised);
+                return _runtime.state; // Failed is terminal for this chain
             }
-            return _runtime.state;
         }
 
         uint256 lockEnd = _runtime.lockEndTime;
@@ -555,7 +585,6 @@ contract InstitutionalLoanVault is BaseVault {
         _runtime.totalDebt = _computeTotalInterest();
         uint256 idealCollateral = _instConfig.idealCollateralAmount;
         _instRuntime.minimumCollateralRequired = (idealCollateral * totalRaised) / _config.maxBorrowCap;
-        _instRuntime.idealCollateralValuation = _getCollateralValueUSD(_instRuntime.minimumCollateralRequired);
         emit VaultLocked(totalRaised, _runtime.lockEndTime);
     }
 
@@ -686,7 +715,7 @@ contract InstitutionalLoanVault is BaseVault {
         uint256 amount
     ) internal view returns (uint256) {
         if (amount == 0) return 0;
-        address supply = address(_config.supplyAsset);
+        address supply = asset();
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 price = oracleRef.getPrice(supply);
         if (price == 0) revert InvalidOraclePrice();
@@ -730,7 +759,7 @@ contract InstitutionalLoanVault is BaseVault {
         RiskConfig memory rc = _riskConfig;
         uint256 incentive = liqType == LiquidationType.HF_BASED ? rc.liquidationIncentive : rc.latePenaltyRate;
 
-        address supplyAsset = address(_config.supplyAsset);
+        address supplyAsset = asset();
         address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
 

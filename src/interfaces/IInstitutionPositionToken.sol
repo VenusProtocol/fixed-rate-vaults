@@ -34,12 +34,15 @@ interface IInstitutionPositionToken is IERC721 {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Sets `transferApproved[tokenId] = true`. Required before any transfer can occur.
+     * @notice Sets `approvedRecipient[tokenId] = recipient`. Required before any transfer can occur.
+     *         One-shot — cleared once the matching transfer is consumed.
      * @param tokenId The token ID to approve for transfer.
-     * @custom:event PositionTransferApproved Emitted with the token ID.
+     * @param recipient The address that must be the destination of the next transfer.
+     * @custom:event PositionTransferApproved Emitted with the token ID and recipient.
      */
     function approveTransfer(
-        uint256 tokenId
+        uint256 tokenId,
+        address recipient
     ) external;
 
     /**
@@ -65,8 +68,8 @@ interface IInstitutionPositionToken is IERC721 {
         address vault
     ) external view returns (uint256);
 
-    /// @notice Whether governance has approved the transfer of a specific token.
-    function transferApproved(
+    /// @notice Recipient that governance has approved to receive a specific token (zero if none).
+    function approvedRecipient(
         uint256 tokenId
-    ) external view returns (bool);
+    ) external view returns (address);
 }

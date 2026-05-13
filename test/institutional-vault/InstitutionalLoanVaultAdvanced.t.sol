@@ -428,7 +428,7 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
         // Admin approves the transfer via controller.
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newInstitution);
 
         // Institution transfers position token to new owner.
         vm.prank(institution);
@@ -464,7 +464,7 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
         // Admin approves the transfer via controller.
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newInstitution);
 
         // Institution transfers position token to new owner.
         vm.prank(institution);
@@ -495,7 +495,7 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
         // Admin approves the transfer via controller.
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newInstitution);
 
         // Institution transfers position token to new owner.
         vm.prank(institution);
@@ -523,7 +523,7 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
         uint256 tokenId = vault.institutionalConfig().positionTokenId;
 
         // Admin approves the transfer via controller.
-        controller.approvePositionTransfer(address(vault));
+        controller.approvePositionTransfer(address(vault), newInstitution);
 
         // Institution transfers position token to new owner.
         vm.prank(institution);

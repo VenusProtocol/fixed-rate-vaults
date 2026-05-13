@@ -478,6 +478,71 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         assertEq(vault.institutionalRuntime().confiscatedMarginRemaining, 0);
     }
 
+    /// @dev Dormant catch-up: a vault stuck in Fundraising past lockEndTime should advance
+    ///      Fundraising → Lock → PendingSettlement in a single _checkAndAdvanceState call,
+    ///      so a late claimRaisedFunds() can't slip through against a stale Lock state.
+    function test_dormantFundraising_pastLockEnd_blocksLateClaim() external {
+        _openVault();
+
+        // Lender fills the cap; institution tops up collateral — eligible for Lock,
+        // but no one calls updateVaultState, so the vault sits in Fundraising.
+        supply.mint(lender1, MAX_BORROW_CAP);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), MAX_BORROW_CAP);
+        vault.deposit(MAX_BORROW_CAP, lender1);
+        vm.stopPrank();
+        uint256 remaining = IDEAL_COLLATERAL_AMOUNT - MARGIN_AMOUNT;
+        collateral.mint(institution, remaining);
+        vm.startPrank(institution);
+        collateral.approve(address(vault), remaining);
+        vault.depositCollateral(remaining);
+        vm.stopPrank();
+        assertEq(uint8(vault.state()), uint8(VaultState.Fundraising));
+
+        // Warp past lockEndTime (pre-populated in openVault()).
+        uint256 lockEnd = vault.runtime().lockEndTime;
+        vm.warp(lockEnd + 1);
+
+        // Institution attempts a late claim — multi-step catch-up advances state past Lock,
+        // and the existing `state == Lock` check in _beforeClaimRaisedFunds rejects it.
+        // (The revert rolls back the in-call state advancement; the security property — claim
+        //  blocked — is what matters here.)
+        vm.prank(institution);
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        vault.claimRaisedFunds();
+
+        // A separate non-reverting poke persists the catch-up. PendingSettlement here because
+        // we warped past lockEnd but not past settlementDeadline.
+        vault.updateVaultState();
+        assertEq(uint8(vault.state()), uint8(VaultState.PendingSettlement));
+    }
+
+    /// @dev Dormant catch-up reaching the deadline-exceeded state in a single call.
+    function test_dormantFundraising_pastSettlementDeadline_landsAtSettlementDeadlineExceeded() external {
+        _openVault();
+
+        supply.mint(lender1, MAX_BORROW_CAP);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), MAX_BORROW_CAP);
+        vault.deposit(MAX_BORROW_CAP, lender1);
+        vm.stopPrank();
+        uint256 remaining = IDEAL_COLLATERAL_AMOUNT - MARGIN_AMOUNT;
+        collateral.mint(institution, remaining);
+        vm.startPrank(institution);
+        collateral.approve(address(vault), remaining);
+        vault.depositCollateral(remaining);
+        vm.stopPrank();
+
+        // Warp past settlementDeadline (also pre-populated in openVault()).
+        uint256 deadline = vault.runtime().settlementDeadline;
+        vm.warp(deadline + 1);
+
+        // A single permissionless poke should advance the vault all the way to SettlementDeadlineExceeded.
+        vault.updateVaultState();
+
+        assertEq(uint8(vault.state()), uint8(VaultState.SettlementDeadlineExceeded));
+    }
+
     function test_lockToPendingSettlement() external {
         _openVault();
         _lockVault();
@@ -1498,15 +1563,16 @@ contract CrossDecimalLiquidationTest is Test {
     }
 
     function _grantAllPermissions() internal {
-        string[14] memory controllerSigs = [
+        string[15] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
+            "cancelVault(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
             "unpauseVault(address)",
             "closeVault(address)",
-            "approvePositionTransfer(address)",
+            "approvePositionTransfer(address,address)",
             "revokePositionTransfer(address)",
             "setLiquidationThreshold(address,uint256)",
             "setLiquidationIncentive(address,uint256)",
@@ -1514,7 +1580,7 @@ contract CrossDecimalLiquidationTest is Test {
             "setVaultImplementation(address)",
             "setLiquidationAdapter(address)"
         ];
-        for (uint256 i; i < 14; ++i) {
+        for (uint256 i; i < 15; ++i) {
             acm.giveCallPermission(address(0), controllerSigs[i], admin);
         }
 

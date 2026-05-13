@@ -315,7 +315,7 @@ contract LiquidationAdapter is Initializable, AccessControlledV8, ReentrancyGuar
      * @notice Disabled — renouncing ownership would permanently brick ACM-gated liquidation governance.
      * @custom:error OwnershipCannotBeRenounced Always reverts.
      */
-    function renounceOwnership() public override {
+    function renounceOwnership() public pure override {
         revert OwnershipCannotBeRenounced();
     }
 }

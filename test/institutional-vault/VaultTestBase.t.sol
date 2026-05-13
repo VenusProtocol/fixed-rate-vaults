@@ -178,15 +178,16 @@ abstract contract VaultTestBase is Test {
 
     function _grantAllPermissions() internal {
         // Controller functions
-        string[14] memory controllerSigs = [
+        string[15] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
             "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
             "openVault(address)",
+            "cancelVault(address)",
             "partialPauseVault(address)",
             "completePauseVault(address)",
             "unpauseVault(address)",
             "closeVault(address)",
-            "approvePositionTransfer(address)",
+            "approvePositionTransfer(address,address)",
             "revokePositionTransfer(address)",
             "setLiquidationThreshold(address,uint256)",
             "setLiquidationIncentive(address,uint256)",
@@ -194,7 +195,7 @@ abstract contract VaultTestBase is Test {
             "setVaultImplementation(address)",
             "setLiquidationAdapter(address)"
         ];
-        for (uint256 i; i < 14; ++i) {
+        for (uint256 i; i < 15; ++i) {
             acm.giveCallPermission(address(0), controllerSigs[i], admin);
         }
 
