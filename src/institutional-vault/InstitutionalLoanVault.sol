@@ -146,7 +146,7 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @notice Transitions MarginDeposited -> Open. Controller only.
+     * @notice Transitions MarginDeposited -> Fundraising. Controller only.
      * @custom:error InvalidState If vault is not in MarginDeposited state.
      * @custom:event VaultOpened Emitted with the open end time.
      * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
@@ -576,7 +576,7 @@ contract InstitutionalLoanVault is BaseVault {
 
     /**
      * @dev Fundraising -> Lock. Initialises totalDebt, computes and stores minimum collateral
-     *      required and its USD valuation scaled to the actual amount raised.
+     *      required scaled to the actual amount raised.
      */
     function _enterLock(
         uint256 totalRaised

@@ -37,7 +37,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Transitions MarginDeposited -> Open. Sets fundraising and lock timestamps.
+     * @notice Transitions MarginDeposited -> Fundraising. Sets fundraising and lock timestamps.
      * @custom:error InvalidState If vault is not in MarginDeposited state.
      * @custom:event VaultOpened Emitted with the open end time.
      * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
