@@ -74,7 +74,6 @@ contract InstitutionalLoanVault is BaseVault {
 
     error InsufficientCollateral();
     error NotPositionHolder();
-    error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
     error NotBadDebt();
     error InsufficientRepayment();
@@ -95,7 +94,6 @@ contract InstitutionalLoanVault is BaseVault {
      *      if the institution transfers the token, the new holder gains access to position-holder gated functions.
      */
     modifier onlyPositionHolder() {
-        if (_instConfig.positionTokenId == 0) revert PositionTokenIdNotSet();
         if (positionToken.ownerOf(_instConfig.positionTokenId) != msg.sender) revert NotPositionHolder();
         _;
     }

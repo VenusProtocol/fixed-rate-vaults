@@ -181,12 +181,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         address institution = _instConfig.institutionOperator;
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
 
-        // Mint position token first (predict address for vault mapping)
-        vault = Clones.predictDeterministicAddress(vaultImplementation, salt);
-        uint256 tokenId = positionToken.mint(institution, vault);
-
-        // Deploy clone
+        // Deploy clone, then mint position token with the actual vault address
         vault = Clones.cloneDeterministic(vaultImplementation, salt);
+        uint256 tokenId = positionToken.mint(institution, vault);
 
         // Assemble institutional config with tokenId and initialize
         InstitutionalConfig memory assembledInstConfig = _assembleInstConfig(_instConfig, tokenId);
