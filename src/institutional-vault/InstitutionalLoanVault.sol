@@ -689,7 +689,25 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @dev Converts a collateral token amount to its USD value via oracle.
+     * @notice Converts any asset amount to its USD value via the oracle.
+     * @param assetAddr Address of the asset to price.
+     * @param amount Token amount to convert.
+     * @return USD value in 18-decimal format; 0 if amount is 0.
+     * @custom:error InvalidOraclePrice if the oracle returns a zero price.
+     */
+    function _getAssetValueUSD(
+        address assetAddr,
+        uint256 amount
+    ) internal view returns (uint256) {
+        if (amount == 0) return 0;
+        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
+        uint256 price = oracleRef.getPrice(assetAddr);
+        if (price == 0) revert InvalidOraclePrice();
+        return (amount * price) / MANTISSA_ONE;
+    }
+
+    /**
+     * @notice Converts a collateral token amount to its USD value via oracle.
      * @param amount Collateral token amount to price.
      * @return USD value in 18-decimal format.
      * @custom:error InvalidOraclePrice if oracle returns zero.
@@ -697,16 +715,11 @@ contract InstitutionalLoanVault is BaseVault {
     function _getCollateralValueUSD(
         uint256 amount
     ) internal view returns (uint256) {
-        if (amount == 0) return 0;
-        address collateral = address(_instConfig.collateralAsset);
-        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-        uint256 price = oracleRef.getPrice(collateral);
-        if (price == 0) revert InvalidOraclePrice();
-        return (amount * price) / MANTISSA_ONE;
+        return _getAssetValueUSD(address(_instConfig.collateralAsset), amount);
     }
 
     /**
-     * @dev Converts a debt (supply asset) amount to its USD value via oracle.
+     * @notice Converts a debt (supply asset) amount to its USD value via oracle.
      * @param amount Debt amount to price.
      * @return USD value in 18-decimal format.
      * @custom:error InvalidOraclePrice if oracle returns zero.
@@ -714,12 +727,7 @@ contract InstitutionalLoanVault is BaseVault {
     function _getDebtValueUSD(
         uint256 amount
     ) internal view returns (uint256) {
-        if (amount == 0) return 0;
-        address supply = asset();
-        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-        uint256 price = oracleRef.getPrice(supply);
-        if (price == 0) revert InvalidOraclePrice();
-        return (amount * price) / MANTISSA_ONE;
+        return _getAssetValueUSD(asset(), amount);
     }
 
     /**
@@ -759,17 +767,14 @@ contract InstitutionalLoanVault is BaseVault {
         RiskConfig memory rc = _riskConfig;
         uint256 incentive = liqType == LiquidationType.HF_BASED ? rc.liquidationIncentive : rc.latePenaltyRate;
 
-        address supplyAsset = asset();
+        // asset() = ERC-4626 supply asset (debt token)
+        uint256 repayValueUSD = _getAssetValueUSD(asset(), repayAmount);
+        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA_ONE;
+
         address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-
-        uint256 supplyPrice = oracleRef.getPrice(supplyAsset);
         uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
-
-        if (supplyPrice == 0 || collateralPrice == 0) revert InvalidOraclePrice();
-
-        uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA_ONE;
-        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA_ONE;
+        if (collateralPrice == 0) revert InvalidOraclePrice();
         seizeAmount = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
     }
 }
