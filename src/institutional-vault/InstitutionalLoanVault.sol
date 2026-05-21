@@ -343,12 +343,10 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
-        uint256 balanceBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
-        uint256 actual = collateralToken.balanceOf(address(this)) - balanceBefore;
 
-        _instRuntime.totalCollateralDeposited += actual;
-        emit CollateralDeposited(actual, _instRuntime.totalCollateralDeposited);
+        _instRuntime.totalCollateralDeposited += amount;
+        emit CollateralDeposited(amount, _instRuntime.totalCollateralDeposited);
 
         if (s == VaultState.WaitingForMargin) {
             uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA_ONE;
