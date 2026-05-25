@@ -29,6 +29,7 @@ import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
  *      Position-holder gated functions (collateral ops, claimRaisedFunds) are restricted to the
  *      current owner of the vault's PositionToken — not the original institution address. The
  *      institution can transfer vault ownership by transferring the token to another address.
+ *      Fee-on-transfer tokens are NOT supported for either the underlying asset or collateral.
  */
 contract InstitutionalLoanVault is BaseVault {
     using SafeERC20 for IERC20;
@@ -322,7 +323,8 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Deposits collateral into the vault.
+     * @notice Deposits collateral into the vault. Fee-on-transfer / rebasing collateral tokens are
+     *         NOT supported.
      *         - WaitingForMargin: the full margin amount must be deposited in a single transaction
      *           to transition to MarginDeposited; partial deposits revert.
      *         - Fundraising: institution deposits remaining collateral alongside lender fundraising.
