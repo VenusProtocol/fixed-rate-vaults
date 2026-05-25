@@ -767,12 +767,12 @@ contract InstitutionalLoanVault is BaseVault {
 
         // asset() = ERC-4626 supply asset (debt token)
         uint256 repayValueUSD = _getAssetValueUSD(asset(), repayAmount);
-        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA_ONE;
 
         address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
         uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
         if (collateralPrice == 0) revert InvalidOraclePrice();
-        seizeAmount = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
+
+        seizeAmount = (repayValueUSD * incentive) / collateralPrice;
     }
 }
