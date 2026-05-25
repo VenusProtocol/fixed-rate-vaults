@@ -194,4 +194,26 @@ contract InstitutionPositionTokenTest is Test {
         vm.expectRevert(InstitutionPositionToken.OwnershipCannotBeRenounced.selector);
         posToken.renounceOwnership();
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Token URI
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_tokenURI_returnsCorrectUrl() external {
+        posToken.mint(institution, makeAddr("vault"));
+
+        assertEq(posToken.tokenURI(1), "https://api.venus.io/institutional-vaults/metadata?id=1");
+    }
+
+    function testFuzz_tokenURI_returnsCorrectUrl(
+        uint256 count
+    ) external {
+        count = bound(count, 1, 50);
+        for (uint256 i = 0; i < count; i++) {
+            posToken.mint(institution, address(uint160(i + 1)));
+        }
+        string memory expected =
+            string(abi.encodePacked("https://api.venus.io/institutional-vaults/metadata?id=", vm.toString(count)));
+        assertEq(posToken.tokenURI(count), expected);
+    }
 }
