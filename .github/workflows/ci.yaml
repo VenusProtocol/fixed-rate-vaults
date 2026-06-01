@@ -118,7 +118,7 @@ jobs:
               }' $BROADCAST_FILES > "./deployments/${NETWORK}_addresses.json"
           done
 
-          yarn format
+          yarn prettier --write "deployments/*.json"
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
