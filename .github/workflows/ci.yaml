@@ -77,9 +77,6 @@ jobs:
       - name: Export deployment addresses from broadcast files
         run: yarn export-deployments
 
-      - name: Format deployment files
-        run: yarn prettier --write "deployments/*.json"
-
       - name: Check for new deployments
         id: check-deployments
         run: |
@@ -100,6 +97,10 @@ jobs:
       - name: Export ABIs
         if: steps.check-deployments.outputs.changed == 'true'
         run: yarn export-abis
+
+      - name: Format deployment files
+        if: steps.check-deployments.outputs.changed == 'true'
+        run: yarn prettier --write "deployments/**/*.json"
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
