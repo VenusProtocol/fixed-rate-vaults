@@ -1,7 +1,10 @@
 {
   "name": "@venusprotocol/fixed-rate-vaults",
   "version": "1.0.0",
-  "repository": "git@github-venus:VenusProtocol/fixed-rate-vaults.git",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VenusProtocol/fixed-rate-vaults.git"
+  },
   "author": "",
   "license": "ISC",
   "packageManager": "yarn@3.2.0",
