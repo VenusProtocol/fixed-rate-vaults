@@ -75,52 +75,34 @@ jobs:
         run: yarn
 
       - name: Export deployment addresses from broadcast files
-        shell: bash
+        run: yarn export-deployments
+
+      - name: Check for new deployments
+        id: check-deployments
         run: |
-          mkdir -p deployments
+          if git diff --quiet deployments/; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
 
-          declare -A NETWORKS
-          NETWORKS=(
-            ["bsc_testnet"]=97
-            ["bsc_mainnet"]=56
-            ["sepolia"]=11155111
-            ["ethereum"]=1
-            ["opbnb_testnet"]=5611
-            ["opbnb_mainnet"]=204
-            ["arbitrum_sepolia"]=421614
-            ["arbitrum_one"]=42161
-            ["op_sepolia"]=11155420
-            ["op_mainnet"]=10
-            ["base_sepolia"]=84532
-            ["base_mainnet"]=8453
-            ["unichain_sepolia"]=1301
-            ["unichain_mainnet"]=130
-          )
+      - name: Install Foundry
+        if: steps.check-deployments.outputs.changed == 'true'
+        uses: foundry-rs/foundry-toolchain@v1
 
-          for NETWORK in "${!NETWORKS[@]}"; do
-            CHAIN_ID="${NETWORKS[$NETWORK]}"
+      - name: Build contracts
+        if: steps.check-deployments.outputs.changed == 'true'
+        run: forge build
 
-            # Only pick up real deployments (not dry-run)
-            BROADCAST_FILES=$(find broadcast -path "*/${CHAIN_ID}/run-latest.json" -not -path "*/dry-run/*" 2>/dev/null)
+      - name: Export ABIs
+        if: steps.check-deployments.outputs.changed == 'true'
+        run: yarn export-abis
 
-            if [ -z "$BROADCAST_FILES" ]; then
-              continue
-            fi
-
-            # Extract contract names and addresses from all broadcast files for this chain
-            jq -s \
-              --arg name "$NETWORK" \
-              --argjson chainId "$CHAIN_ID" \
-              '{
-                name: $name,
-                chainId: $chainId,
-                addresses: (([.[].transactions[] | select(.transactionType == "CREATE") | {(.contractName): .contractAddress}] | add) // {})
-              }' $BROADCAST_FILES > "./deployments/${NETWORK}_addresses.json"
-          done
-
-          yarn prettier --write "deployments/*.json"
+      - name: Format deployment files
+        if: steps.check-deployments.outputs.changed == 'true'
+        run: yarn prettier --write "deployments/**/*.json"
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "feat: updating deployment files"
-          file_pattern: "deployments/*.json"
+          file_pattern: "deployments/**"

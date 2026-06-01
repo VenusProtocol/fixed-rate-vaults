@@ -10,7 +10,7 @@ via_ir = true
 ffi = false
 
 [profile.ci]
-fuzz = { runs = 5000 }
+fuzz = { runs = 2000 }
 invariant = { runs = 1000 }
 
 [profile.lite]

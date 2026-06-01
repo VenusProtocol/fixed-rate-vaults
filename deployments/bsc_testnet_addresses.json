@@ -2,10 +2,11 @@
   "name": "bsc_testnet",
   "chainId": 97,
   "addresses": {
-    "LiquidationAdapter": "0xe789128a050ba33ca9f0f690b4157cac32e97d99",
-    "TransparentUpgradeableProxy": "0xf77ded2a00f94e33c392126238360d4642c16ba2",
-    "InstitutionalVaultController": "0xb92ced5fc18b58323b056168764fb5320edfd1af",
     "InstitutionalLoanVault": "0x1e311a618e748367d40f84cdb32211f1376b996f",
-    "InstitutionPositionToken": "0x71da473257a96e975558c8edd8491ad0880efce5"
+    "InstitutionPositionToken": "0x71da473257a96e975558c8edd8491ad0880efce5",
+    "InstitutionalVaultController": "0xb92ced5fc18b58323b056168764fb5320edfd1af",
+    "InstitutionalVaultControllerProxy": "0xf77ded2a00f94e33c392126238360d4642c16ba2",
+    "LiquidationAdapter": "0xe789128a050ba33ca9f0f690b4157cac32e97d99",
+    "LiquidationAdapterProxy": "0x4b302b56315ca16a0a4565108e62404496916491"
   }
 }
