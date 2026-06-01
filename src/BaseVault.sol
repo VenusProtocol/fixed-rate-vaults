@@ -332,7 +332,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     }
 
     /**
-     * @notice Remaining deposit capacity in supply asset units. Zero outside Open state.
+     * @notice Remaining deposit capacity in supply asset units. Zero outside Fundraising state.
      * @param /*receiver Unused — no per-user limits in base implementation.
      * @return Maximum depositable amount.
      */

@@ -29,6 +29,7 @@ import { IResilientOracle } from "../interfaces/IResilientOracle.sol";
  *      Position-holder gated functions (collateral ops, claimRaisedFunds) are restricted to the
  *      current owner of the vault's PositionToken — not the original institution address. The
  *      institution can transfer vault ownership by transferring the token to another address.
+ *      Fee-on-transfer tokens are NOT supported for either the underlying asset or collateral.
  */
 contract InstitutionalLoanVault is BaseVault {
     using SafeERC20 for IERC20;
@@ -74,7 +75,6 @@ contract InstitutionalLoanVault is BaseVault {
 
     error InsufficientCollateral();
     error NotPositionHolder();
-    error PositionTokenIdNotSet();
     error InvalidStateForOverdueLiquidation();
     error NotBadDebt();
     error InsufficientRepayment();
@@ -95,7 +95,6 @@ contract InstitutionalLoanVault is BaseVault {
      *      if the institution transfers the token, the new holder gains access to position-holder gated functions.
      */
     modifier onlyPositionHolder() {
-        if (_instConfig.positionTokenId == 0) revert PositionTokenIdNotSet();
         if (positionToken.ownerOf(_instConfig.positionTokenId) != msg.sender) revert NotPositionHolder();
         _;
     }
@@ -146,7 +145,7 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @notice Transitions MarginDeposited -> Open. Controller only.
+     * @notice Transitions MarginDeposited -> Fundraising. Controller only.
      * @custom:error InvalidState If vault is not in MarginDeposited state.
      * @custom:event VaultOpened Emitted with the open end time.
      * @custom:event StateTransition Emitted for MarginDeposited -> Fundraising.
@@ -324,7 +323,8 @@ contract InstitutionalLoanVault is BaseVault {
     // ──────────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Deposits collateral into the vault.
+     * @notice Deposits collateral into the vault. Fee-on-transfer / rebasing collateral tokens are
+     *         NOT supported.
      *         - WaitingForMargin: the full margin amount must be deposited in a single transaction
      *           to transition to MarginDeposited; partial deposits revert.
      *         - Fundraising: institution deposits remaining collateral alongside lender fundraising.
@@ -343,12 +343,10 @@ contract InstitutionalLoanVault is BaseVault {
         }
 
         IERC20 collateralToken = IERC20(address(_instConfig.collateralAsset));
-        uint256 balanceBefore = collateralToken.balanceOf(address(this));
         collateralToken.safeTransferFrom(msg.sender, address(this), amount);
-        uint256 actual = collateralToken.balanceOf(address(this)) - balanceBefore;
 
-        _instRuntime.totalCollateralDeposited += actual;
-        emit CollateralDeposited(actual, _instRuntime.totalCollateralDeposited);
+        _instRuntime.totalCollateralDeposited += amount;
+        emit CollateralDeposited(amount, _instRuntime.totalCollateralDeposited);
 
         if (s == VaultState.WaitingForMargin) {
             uint256 marginAmount = (_instConfig.idealCollateralAmount * _instConfig.marginRate) / MANTISSA_ONE;
@@ -576,7 +574,7 @@ contract InstitutionalLoanVault is BaseVault {
 
     /**
      * @dev Fundraising -> Lock. Initialises totalDebt, computes and stores minimum collateral
-     *      required and its USD valuation scaled to the actual amount raised.
+     *      required scaled to the actual amount raised.
      */
     function _enterLock(
         uint256 totalRaised
@@ -689,7 +687,25 @@ contract InstitutionalLoanVault is BaseVault {
     }
 
     /**
-     * @dev Converts a collateral token amount to its USD value via oracle.
+     * @notice Converts any asset amount to its USD value via the oracle.
+     * @param assetAddr Address of the asset to price.
+     * @param amount Token amount to convert.
+     * @return USD value in 18-decimal format; 0 if amount is 0.
+     * @custom:error InvalidOraclePrice if the oracle returns a zero price.
+     */
+    function _getAssetValueUSD(
+        address assetAddr,
+        uint256 amount
+    ) internal view returns (uint256) {
+        if (amount == 0) return 0;
+        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
+        uint256 price = oracleRef.getPrice(assetAddr);
+        if (price == 0) revert InvalidOraclePrice();
+        return (amount * price) / MANTISSA_ONE;
+    }
+
+    /**
+     * @notice Converts a collateral token amount to its USD value via oracle.
      * @param amount Collateral token amount to price.
      * @return USD value in 18-decimal format.
      * @custom:error InvalidOraclePrice if oracle returns zero.
@@ -697,16 +713,11 @@ contract InstitutionalLoanVault is BaseVault {
     function _getCollateralValueUSD(
         uint256 amount
     ) internal view returns (uint256) {
-        if (amount == 0) return 0;
-        address collateral = address(_instConfig.collateralAsset);
-        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-        uint256 price = oracleRef.getPrice(collateral);
-        if (price == 0) revert InvalidOraclePrice();
-        return (amount * price) / MANTISSA_ONE;
+        return _getAssetValueUSD(address(_instConfig.collateralAsset), amount);
     }
 
     /**
-     * @dev Converts a debt (supply asset) amount to its USD value via oracle.
+     * @notice Converts a debt (supply asset) amount to its USD value via oracle.
      * @param amount Debt amount to price.
      * @return USD value in 18-decimal format.
      * @custom:error InvalidOraclePrice if oracle returns zero.
@@ -714,12 +725,7 @@ contract InstitutionalLoanVault is BaseVault {
     function _getDebtValueUSD(
         uint256 amount
     ) internal view returns (uint256) {
-        if (amount == 0) return 0;
-        address supply = asset();
-        IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-        uint256 price = oracleRef.getPrice(supply);
-        if (price == 0) revert InvalidOraclePrice();
-        return (amount * price) / MANTISSA_ONE;
+        return _getAssetValueUSD(asset(), amount);
     }
 
     /**
@@ -759,17 +765,14 @@ contract InstitutionalLoanVault is BaseVault {
         RiskConfig memory rc = _riskConfig;
         uint256 incentive = liqType == LiquidationType.HF_BASED ? rc.liquidationIncentive : rc.latePenaltyRate;
 
-        address supplyAsset = asset();
+        // asset() = ERC-4626 supply asset (debt token)
+        uint256 repayValueUSD = _getAssetValueUSD(asset(), repayAmount);
+
         address collateralAsset = address(_instConfig.collateralAsset);
         IResilientOracle oracleRef = IResilientOracle(IInstitutionalVaultController(vaultController).oracle());
-
-        uint256 supplyPrice = oracleRef.getPrice(supplyAsset);
         uint256 collateralPrice = oracleRef.getPrice(collateralAsset);
+        if (collateralPrice == 0) revert InvalidOraclePrice();
 
-        if (supplyPrice == 0 || collateralPrice == 0) revert InvalidOraclePrice();
-
-        uint256 repayValueUSD = (repayAmount * supplyPrice) / MANTISSA_ONE;
-        uint256 seizeValueUSD = (repayValueUSD * incentive) / MANTISSA_ONE;
-        seizeAmount = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
+        seizeAmount = (repayValueUSD * incentive) / collateralPrice;
     }
 }

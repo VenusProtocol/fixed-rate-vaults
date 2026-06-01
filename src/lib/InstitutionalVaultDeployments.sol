@@ -19,23 +19,23 @@ library InstitutionalVaultDeployments {
 
     function bscMainnet() internal pure returns (Deployments memory) {
         return Deployments({
-            vaultImpl: address(0),
-            positionToken: address(0),
-            controllerImpl: address(0),
-            controllerProxy: address(0),
-            adapterImpl: address(0),
-            adapterProxy: address(0)
+            vaultImpl: 0x10d63B1203E5A0719AbbE927C8BFc87135b2F129,
+            positionToken: 0x3Ed56f6937fc8549f9325405d1e8E650739647Fa,
+            controllerImpl: 0x9e1ECb2671AfabE9eaAA2e74Cb2318a9b6A2Eb5d,
+            controllerProxy: 0x6D9e91cB766259af42619c14c994E694E57e6E85,
+            adapterImpl: 0xdC888D97d6cBA15d2733ce14bF292F8ae6e0450e,
+            adapterProxy: 0x17A6222fB8b4b6D852cA54f5bc376a6A2c6224Bd
         });
     }
 
     function bscTestnet() internal pure returns (Deployments memory) {
         return Deployments({
-            vaultImpl: 0x8100e5323946cbBB1eeBc5275BCD7b064908eeEc,
-            positionToken: 0x377180882397718D4061d815Df32CF7DF8492f4F,
-            controllerImpl: 0xA42E7af0df4E8A74d6Aa8b3054537EFae77515dd,
-            controllerProxy: 0x36bA78812Ffff64B9ec060a1F07FcFa2012f6F89,
-            adapterImpl: 0xDD834A8360Ce77293613886b5B1c9a0A0EB3Dca4,
-            adapterProxy: 0x69d79D60abD5A7080C9f178a44c5f1bf1A461541
+            vaultImpl: 0x1e311a618e748367D40F84cdb32211F1376B996F,
+            positionToken: 0x71dA473257a96e975558C8edD8491AD0880EFCe5,
+            controllerImpl: 0xb92CEd5Fc18b58323B056168764fb5320eDfD1aF,
+            controllerProxy: 0xf77dED2A00F94e33C392126238360D4642c16Ba2,
+            adapterImpl: 0xE789128A050Ba33Ca9f0F690B4157Cac32E97D99,
+            adapterProxy: 0x4b302b56315Ca16A0A4565108e62404496916491
         });
     }
 

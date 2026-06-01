@@ -139,4 +139,9 @@ contract InstitutionPositionToken is ERC721, Ownable2Step {
             approvedRecipient[firstTokenId] = address(0); // one-time use
         }
     }
+
+    /// @notice Base URI prepended to every token ID to form the full metadata URL.
+    function _baseURI() internal pure override returns (string memory) {
+        return "https://api.venus.io/institutional-vaults/metadata?id=";
+    }
 }

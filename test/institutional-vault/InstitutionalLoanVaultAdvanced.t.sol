@@ -39,10 +39,9 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
 
         uint256 seize = vault.calculateSeizeAmount(repayAmt, LiquidationType.HF_BASED);
 
-        // Expected: (repayAmt * supplyPrice / MANTISSA_ONE) * LI / MANTISSA_ONE * MANTISSA_ONE / collateralPrice
+        // Expected: (repayAmt * supplyPrice / MANTISSA_ONE) * LI / collateralPrice
         uint256 repayValueUSD = (repayAmt * supplyPrice) / MANTISSA_ONE;
-        uint256 seizeValueUSD = (repayValueUSD * LI) / MANTISSA_ONE;
-        uint256 expected = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
+        uint256 expected = (repayValueUSD * LI) / collateralPrice;
 
         assertEq(seize, expected);
     }
@@ -68,8 +67,7 @@ contract InstitutionalLoanVaultAdvancedTest is VaultTestBase {
 
         // Expected: same formula but uses LATE_PENALTY_RATE instead of LI.
         uint256 repayValueUSD = (repayAmt * supplyPrice) / MANTISSA_ONE;
-        uint256 seizeValueUSD = (repayValueUSD * LATE_PENALTY_RATE) / MANTISSA_ONE;
-        uint256 expected = (seizeValueUSD * MANTISSA_ONE) / collateralPrice;
+        uint256 expected = (repayValueUSD * LATE_PENALTY_RATE) / collateralPrice;
 
         assertEq(seize, expected);
     }
