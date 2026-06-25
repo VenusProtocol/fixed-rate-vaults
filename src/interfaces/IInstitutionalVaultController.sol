@@ -166,6 +166,20 @@ interface IInstitutionalVaultController is IVaultController {
         uint256 newRate
     ) external;
 
+    /**
+     * @notice Renames the institution on a vault.
+     * @param vault Vault address to update.
+     * @param newName New human-readable institution name.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidConfig If newName is empty.
+     * @custom:error InstitutionNameUnchanged If newName equals the current name.
+     * @custom:event InstitutionNameUpdated
+     */
+    function setInstitutionName(
+        address vault,
+        string calldata newName
+    ) external;
+
     // ──────────────────────────────────────────────────────────────────────
     // Registry & Views
     // ──────────────────────────────────────────────────────────────────────

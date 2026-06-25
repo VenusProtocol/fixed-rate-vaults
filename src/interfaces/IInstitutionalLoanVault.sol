@@ -228,6 +228,15 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
         uint256 newRate
     ) external;
 
+    /**
+     * @notice Renames the institution. Validated by controller before calling.
+     * @param newName New human-readable institution name.
+     * @custom:event InstitutionNameUpdated
+     */
+    function setInstitutionName(
+        string calldata newName
+    ) external;
+
     // ──────────────────────────────────────────────────────────────────────
     // Views
     // ──────────────────────────────────────────────────────────────────────

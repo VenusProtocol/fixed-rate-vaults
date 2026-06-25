@@ -87,6 +87,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     event LiquidationThresholdUpdated(address indexed vault, uint256 newLT);
     event LiquidationIncentiveUpdated(address indexed vault, uint256 newLI);
     event LatePenaltyRateUpdated(address indexed vault, uint256 newRate);
+    event InstitutionNameUpdated(address indexed vault, string oldName, string newName);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -98,6 +99,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     error InvalidLiquidationIncentive();
     error InvalidLatePenaltyRate();
     error InvalidAddress();
+    error InstitutionNameUnchanged();
     error OwnershipCannotBeRenounced();
 
     // ──────────────────────────────────────────────────────────────────────
@@ -387,6 +389,28 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     }
 
     /**
+     * @notice Renames the institution on a vault.
+     * @param vault Vault address to update.
+     * @param newName New human-readable institution name.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidConfig If newName is empty.
+     * @custom:error InstitutionNameUnchanged If newName equals the current name.
+     * @custom:event InstitutionNameUpdated
+     */
+    function setInstitutionName(
+        address vault,
+        string calldata newName
+    ) external {
+        _checkAccessAllowed("setInstitutionName(address,string)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        if (bytes(newName).length == 0) revert InvalidConfig();
+        string memory oldName = IInstitutionalLoanVault(vault).institutionalConfig().institutionName;
+        if (keccak256(bytes(newName)) == keccak256(bytes(oldName))) revert InstitutionNameUnchanged();
+        emit InstitutionNameUpdated(vault, oldName, newName);
+        IInstitutionalLoanVault(vault).setInstitutionName(newName);
+    }
+
+    /**
      * @notice Update clone source. Only affects future vaults.
      * @param impl New implementation address.
      * @custom:error InvalidAddress if zero address.
@@ -547,6 +571,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
         // Institutional config validation
         if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
+        if (bytes(instConfig.institutionName).length == 0) revert InvalidConfig();
         if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
         if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA_ONE) revert InvalidConfig();
         // Risk config validation
@@ -585,7 +610,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
             idealCollateralAmount: c.idealCollateralAmount,
             marginRate: c.marginRate,
             institutionOperator: c.institutionOperator,
-            positionTokenId: tokenId
+            positionTokenId: tokenId,
+            institutionName: c.institutionName
         });
     }
 

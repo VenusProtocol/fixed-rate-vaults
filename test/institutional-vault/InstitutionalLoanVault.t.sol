@@ -54,6 +54,7 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         assertEq(instCfg.marginRate, MARGIN_RATE);
         assertEq(instCfg.institutionOperator, institution);
         assertGt(instCfg.positionTokenId, 0); // assigned by controller
+        assertEq(instCfg.institutionName, INSTITUTION_NAME);
 
         assertEq(rc.liquidationThreshold, LT);
         assertEq(rc.liquidationIncentive, LI);
@@ -1285,6 +1286,23 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         controller.setLatePenaltyRate(address(vault), tooHigh);
     }
 
+    function test_setInstitutionName_valid() external {
+        string memory newName = "Globex Corp";
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalLoanVault.InstitutionNameUpdated(INSTITUTION_NAME, newName);
+
+        controller.setInstitutionName(address(vault), newName);
+
+        assertEq(vault.institutionalConfig().institutionName, newName);
+    }
+
+    function test_setInstitutionName_revertsIfNotController() external {
+        vm.prank(lender1);
+        vm.expectRevert(BaseVault.Unauthorized.selector);
+        vault.setInstitutionName("Globex Corp");
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 3I — Oracle Edge Cases
     // ──────────────────────────────────────────────────────────────────────
@@ -1620,7 +1638,8 @@ contract CrossDecimalLiquidationTest is Test {
             idealCollateralAmount: IDEAL_COLLATERAL_AMOUNT,
             marginRate: MARGIN_RATE,
             institutionOperator: institution,
-            positionTokenId: 0
+            positionTokenId: 0,
+            institutionName: "Inst 6D"
         });
 
         RiskConfig memory rc =

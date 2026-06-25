@@ -68,6 +68,7 @@ contract InstitutionalLoanVault is BaseVault {
     event LiquidationThresholdUpdated(uint256 oldLT, uint256 newLT);
     event LiquidationIncentiveUpdated(uint256 oldLI, uint256 newLI);
     event LatePenaltyRateUpdated(uint256 oldRate, uint256 newRate);
+    event InstitutionNameUpdated(string oldName, string newName);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -257,6 +258,18 @@ contract InstitutionalLoanVault is BaseVault {
     ) external onlyController {
         emit LatePenaltyRateUpdated(_riskConfig.latePenaltyRate, newRate);
         _riskConfig.latePenaltyRate = newRate;
+    }
+
+    /**
+     * @notice Renames the institution. Controller only.
+     * @param newName New human-readable institution name.
+     * @custom:event InstitutionNameUpdated
+     */
+    function setInstitutionName(
+        string calldata newName
+    ) external onlyController {
+        emit InstitutionNameUpdated(_instConfig.institutionName, newName);
+        _instConfig.institutionName = newName;
     }
 
     // ──────────────────────────────────────────────────────────────────────

@@ -271,6 +271,19 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
     }
 
+    function test_createVault_revertsIfInstitutionNameEmpty() external {
+        InstitutionalConfig memory instCfg = _buildInstConfig();
+        instCfg.institutionName = "";
+
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+    }
+
+    function test_createVault_storesInstitutionName() external {
+        _createVault();
+        assertEq(vault.institutionalConfig().institutionName, INSTITUTION_NAME);
+    }
+
     function test_createVault_revertsIfIdealCollateralZero() external {
         InstitutionalConfig memory instCfg = _buildInstConfig();
         instCfg.idealCollateralAmount = 0;
@@ -429,7 +442,8 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             idealCollateralAmount: 1,
             marginRate: 1,
             institutionOperator: institution,
-            positionTokenId: 0
+            positionTokenId: 0,
+            institutionName: "Min Inst"
         });
 
         RiskConfig memory rc = RiskConfig({
@@ -693,6 +707,42 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
 
         vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
         controller.setLatePenaltyRate(unknown, 1.2e18);
+    }
+
+    function test_setInstitutionName_proxied() external {
+        _createVault();
+        string memory newName = "Globex Corp";
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalVaultController.InstitutionNameUpdated(address(vault), INSTITUTION_NAME, newName);
+
+        controller.setInstitutionName(address(vault), newName);
+
+        assertEq(vault.institutionalConfig().institutionName, newName);
+    }
+
+    function test_setInstitutionName_revertsIfVaultNotRegistered() external {
+        vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
+        controller.setInstitutionName(makeAddr("unknownVault"), "Globex Corp");
+    }
+
+    function test_setInstitutionName_revertsIfEmpty() external {
+        _createVault();
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setInstitutionName(address(vault), "");
+    }
+
+    function test_setInstitutionName_revertsIfNotACM() external {
+        _createVault();
+        vm.prank(lender1);
+        vm.expectRevert();
+        controller.setInstitutionName(address(vault), "Globex Corp");
+    }
+
+    function test_setInstitutionName_revertsIfUnchanged() external {
+        _createVault();
+        vm.expectRevert(InstitutionalVaultController.InstitutionNameUnchanged.selector);
+        controller.setInstitutionName(address(vault), INSTITUTION_NAME);
     }
 
     // ──────────────────────────────────────────────────────────────────────
