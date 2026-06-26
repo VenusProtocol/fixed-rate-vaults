@@ -257,6 +257,11 @@
             "name": "positionTokenId",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "institutionName",
+            "type": "string",
+            "internalType": "string"
           }
         ]
       },
@@ -594,6 +599,24 @@
   },
   {
     "type": "function",
+    "name": "setInstitutionName",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "newName",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setLatePenaltyRate",
     "inputs": [
       {
@@ -809,6 +832,31 @@
         "type": "uint8",
         "indexed": false,
         "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "InstitutionNameUpdated",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "oldName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "newName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1040,6 +1088,11 @@
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "InstitutionNameUnchanged",
+    "inputs": []
   },
   {
     "type": "error",
