@@ -529,11 +529,6 @@
             "name": "positionTokenId",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "institutionName",
-            "type": "string",
-            "internalType": "string"
           }
         ]
       },
@@ -573,10 +568,28 @@
         "name": "symbol_",
         "type": "string",
         "internalType": "string"
+      },
+      {
+        "name": "institutionName_",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "institutionName",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -612,11 +625,6 @@
             "name": "positionTokenId",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "institutionName",
-            "type": "string",
-            "internalType": "string"
           }
         ]
       }

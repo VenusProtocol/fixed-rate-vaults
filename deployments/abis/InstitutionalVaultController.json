@@ -257,11 +257,6 @@
             "name": "positionTokenId",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "institutionName",
-            "type": "string",
-            "internalType": "string"
           }
         ]
       },
@@ -294,6 +289,11 @@
       },
       {
         "name": "_symbol",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_institutionName",
         "type": "string",
         "internalType": "string"
       }
@@ -341,6 +341,11 @@
             "name": "outstandingDebt",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "institutionName",
+            "type": "string",
+            "internalType": "string"
           }
         ]
       }
@@ -389,6 +394,25 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "institutionNameOverride",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -600,6 +624,24 @@
   {
     "type": "function",
     "name": "setInstitutionName",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "newName",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setInstitutionNameOverride",
     "inputs": [
       {
         "name": "vault",
@@ -832,6 +874,31 @@
         "type": "uint8",
         "indexed": false,
         "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "InstitutionNameOverrideUpdated",
+    "inputs": [
+      {
+        "name": "vault",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "oldName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "newName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
       }
     ],
     "anonymous": false
