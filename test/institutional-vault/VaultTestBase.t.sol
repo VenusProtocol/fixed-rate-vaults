@@ -179,9 +179,9 @@ abstract contract VaultTestBase is Test {
 
     function _grantAllPermissions() internal {
         // Controller functions
-        string[16] memory controllerSigs = [
+        string[17] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
-            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
+            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string,string)",
             "openVault(address)",
             "cancelVault(address)",
             "partialPauseVault(address)",
@@ -194,10 +194,11 @@ abstract contract VaultTestBase is Test {
             "setLiquidationIncentive(address,uint256)",
             "setLatePenaltyRate(address,uint256)",
             "setInstitutionName(address,string)",
+            "setInstitutionNameOverride(address,string)",
             "setVaultImplementation(address)",
             "setLiquidationAdapter(address)"
         ];
-        for (uint256 i; i < 16; ++i) {
+        for (uint256 i; i < 17; ++i) {
             acm.giveCallPermission(address(0), controllerSigs[i], admin);
         }
 
@@ -244,8 +245,7 @@ abstract contract VaultTestBase is Test {
             idealCollateralAmount: IDEAL_COLLATERAL_AMOUNT,
             marginRate: MARGIN_RATE,
             institutionOperator: institution,
-            positionTokenId: 0, // assigned by controller on createVault
-            institutionName: INSTITUTION_NAME
+            positionTokenId: 0 // assigned by controller on createVault
         });
     }
 
@@ -255,8 +255,9 @@ abstract contract VaultTestBase is Test {
 
     /// @dev Creates a vault clone and returns its address.
     function _createVault() internal returns (address vaultAddr) {
-        vaultAddr =
-            controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        vaultAddr = controller.createVault(
+            _buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME
+        );
         vault = InstitutionalLoanVault(vaultAddr);
     }
 

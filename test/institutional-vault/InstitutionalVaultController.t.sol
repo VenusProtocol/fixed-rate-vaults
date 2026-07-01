@@ -134,7 +134,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         vm.expectEmit(true, true, false, false);
         emit InstitutionalVaultController.VaultCreated(predicted, institution);
 
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(
+            _buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME
+        );
     }
 
     function test_createVault_setsPositionToken() external {
@@ -163,7 +165,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.openDuration = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLockDurationZero() external {
@@ -171,7 +173,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.lockDuration = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfSettlementWindowZero() external {
@@ -179,7 +181,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.settlementWindow = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfMaxBorrowCapZero() external {
@@ -188,7 +190,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.minBorrowCap = 0; // avoid min > max triggering first
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfMinBorrowCapZero() external {
@@ -196,7 +198,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.minBorrowCap = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfMinCapExceedsMax() external {
@@ -204,14 +206,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.minBorrowCap = cfg.maxBorrowCap + 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_minCapEqualsMax_succeeds() external {
         VaultConfig memory cfg = _buildVaultConfig();
         cfg.minBorrowCap = cfg.maxBorrowCap;
 
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfFixedAPYZero() external {
@@ -219,7 +221,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.fixedAPY = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfSupplyAssetZero() external {
@@ -227,7 +229,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.supplyAsset = IERC20(address(0));
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfReserveFactorExceedsMantissa() external {
@@ -235,14 +237,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         cfg.reserveFactor = MANTISSA_ONE + 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_reserveFactorAtMantissa_succeeds() external {
         VaultConfig memory cfg = _buildVaultConfig();
         cfg.reserveFactor = MANTISSA_ONE;
 
-        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(cfg, _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     // InstitutionalConfig boundaries
@@ -252,7 +254,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.collateralAsset = IERC20(address(0));
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfSupplyEqualsCollateral() external {
@@ -260,7 +262,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.collateralAsset = IERC20(address(supply));
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfInstitutionOperatorZero() external {
@@ -268,20 +270,17 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.institutionOperator = address(0);
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfInstitutionNameEmpty() external {
-        InstitutionalConfig memory instCfg = _buildInstConfig();
-        instCfg.institutionName = "";
-
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", "");
     }
 
     function test_createVault_storesInstitutionName() external {
         _createVault();
-        assertEq(vault.institutionalConfig().institutionName, INSTITUTION_NAME);
+        assertEq(vault.institutionName(), INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfIdealCollateralZero() external {
@@ -289,7 +288,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.idealCollateralAmount = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfMarginRateZero() external {
@@ -297,7 +296,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.marginRate = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfMarginRateExceedsMantissa() external {
@@ -305,14 +304,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         instCfg.marginRate = MANTISSA_ONE + 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_marginRateAtMantissa_succeeds() external {
         InstitutionalConfig memory instCfg = _buildInstConfig();
         instCfg.marginRate = MANTISSA_ONE;
 
-        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), instCfg, _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     // RiskConfig boundaries
@@ -322,7 +321,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationThreshold = 0;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLTExceedsMantissa() external {
@@ -330,7 +329,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationThreshold = MANTISSA_ONE + 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLtAtMantissa() external {
@@ -338,7 +337,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationThreshold = MANTISSA_ONE;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLIAtMantissa() external {
@@ -346,7 +345,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationIncentive = MANTISSA_ONE;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLIBelowMantissa() external {
@@ -354,14 +353,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationIncentive = MANTISSA_ONE - 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_liJustAboveMantissa_succeeds() external {
         RiskConfig memory rc = _buildRiskConfig();
         rc.liquidationIncentive = MANTISSA_ONE + 1;
 
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLatePenaltyAtMantissa() external {
@@ -369,7 +368,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.latePenaltyRate = MANTISSA_ONE;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLatePenaltyBelowMantissa() external {
@@ -377,14 +376,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.latePenaltyRate = MANTISSA_ONE - 1;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_latePenaltyJustAboveMantissa_succeeds() external {
         RiskConfig memory rc = _buildRiskConfig();
         rc.latePenaltyRate = MANTISSA_ONE + 1;
 
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -399,7 +398,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.latePenaltyRate = 1.05e18; // keep latePenalty*LT < 1 so LI invariant fires first
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfLatePenaltyTimesLtAtOrAboveOne() external {
@@ -411,7 +410,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.latePenaltyRate = 1.1e18;
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_liTimesLtJustBelowOne_succeeds() external {
@@ -421,7 +420,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         rc.liquidationIncentive = 1.1e18;
         rc.latePenaltyRate = 1.1e18;
 
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV");
+        controller.createVault(_buildVaultConfig(), _buildInstConfig(), rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_allMinimumValidParams_succeeds() external {
@@ -442,15 +441,14 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
             idealCollateralAmount: 1,
             marginRate: 1,
             institutionOperator: institution,
-            positionTokenId: 0,
-            institutionName: "Min Inst"
+            positionTokenId: 0
         });
 
         RiskConfig memory rc = RiskConfig({
             liquidationThreshold: 1, liquidationIncentive: MANTISSA_ONE + 1, latePenaltyRate: MANTISSA_ONE + 1
         });
 
-        controller.createVault(cfg, instCfg, rc, "Inst Vault", "IV");
+        controller.createVault(cfg, instCfg, rc, "Inst Vault", "IV", INSTITUTION_NAME);
     }
 
     function test_createVault_revertsIfSupplyAssetOraclePriceIsZero() external {
@@ -461,7 +459,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         );
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(
+            _buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME
+        );
     }
 
     function test_createVault_revertsIfCollateralAssetOraclePriceIsZero() external {
@@ -470,7 +470,9 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         );
 
         vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
-        controller.createVault(_buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV");
+        controller.createVault(
+            _buildVaultConfig(), _buildInstConfig(), _buildRiskConfig(), "Inst Vault", "IV", INSTITUTION_NAME
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -718,7 +720,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
 
         controller.setInstitutionName(address(vault), newName);
 
-        assertEq(vault.institutionalConfig().institutionName, newName);
+        assertEq(vault.institutionName(), newName);
     }
 
     function test_setInstitutionName_revertsIfVaultNotRegistered() external {
@@ -743,6 +745,55 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         _createVault();
         vm.expectRevert(InstitutionalVaultController.InstitutionNameUnchanged.selector);
         controller.setInstitutionName(address(vault), INSTITUTION_NAME);
+    }
+
+    // ── setInstitutionNameOverride ──
+
+    function test_setInstitutionNameOverride_setsOverride() external {
+        _createVault();
+        string memory overrideName = "Legacy Bank";
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalVaultController.InstitutionNameOverrideUpdated(address(vault), "", overrideName);
+
+        controller.setInstitutionNameOverride(address(vault), overrideName);
+
+        assertEq(controller.institutionNameOverride(address(vault)), overrideName);
+    }
+
+    function test_setInstitutionNameOverride_takesPrecedenceInAggregatedStates() external {
+        address vaultAddr = _createVault(); // on-chain vault.institutionName() == INSTITUTION_NAME
+        string memory overrideName = "Legacy Bank";
+        controller.setInstitutionNameOverride(vaultAddr, overrideName);
+
+        VaultStateInfo[] memory infos = controller.getAggregatedVaultStates();
+        // Override wins over the vault's own on-chain name.
+        assertEq(infos[0].institutionName, overrideName);
+    }
+
+    function test_setInstitutionNameOverride_revertsIfVaultNotRegistered() external {
+        vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
+        controller.setInstitutionNameOverride(makeAddr("unknownVault"), "Legacy Bank");
+    }
+
+    function test_setInstitutionNameOverride_revertsIfEmpty() external {
+        _createVault();
+        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        controller.setInstitutionNameOverride(address(vault), "");
+    }
+
+    function test_setInstitutionNameOverride_revertsIfNotACM() external {
+        _createVault();
+        vm.prank(lender1);
+        vm.expectRevert();
+        controller.setInstitutionNameOverride(address(vault), "Legacy Bank");
+    }
+
+    function test_setInstitutionNameOverride_revertsIfUnchanged() external {
+        _createVault();
+        controller.setInstitutionNameOverride(address(vault), "Legacy Bank");
+        vm.expectRevert(InstitutionalVaultController.InstitutionNameUnchanged.selector);
+        controller.setInstitutionNameOverride(address(vault), "Legacy Bank");
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -879,6 +930,7 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         assertEq(infos[0].institutionOperator, institution);
         assertEq(infos[0].totalRaised, 0);
         assertEq(infos[0].outstandingDebt, 0);
+        assertEq(infos[0].institutionName, INSTITUTION_NAME);
     }
 
     function test_isRegistered_trueForDeployed() external {
