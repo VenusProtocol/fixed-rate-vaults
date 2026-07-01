@@ -19,8 +19,9 @@ interface IInstitutionalVaultController is IVaultController {
      * @param _riskConfig Risk parameters.
      * @param _name ERC-20 share token name for the deployed vault.
      * @param _symbol ERC-20 share token symbol for the deployed vault.
+     * @param _institutionName Human-readable institution label stored on the vault.
      * @return vault Deployed vault address.
-     * @custom:error InvalidConfig If any config validation fails.
+     * @custom:error InvalidConfig If any config validation fails or _institutionName is empty.
      * @custom:event VaultCreated Emitted with vault and institution addresses.
      */
     function createVault(
@@ -28,7 +29,8 @@ interface IInstitutionalVaultController is IVaultController {
         InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig,
         string calldata _name,
-        string calldata _symbol
+        string calldata _symbol,
+        string calldata _institutionName
     ) external returns (address vault);
 
     /**
@@ -180,9 +182,33 @@ interface IInstitutionalVaultController is IVaultController {
         string calldata newName
     ) external;
 
+    /**
+     * @notice Sets an override display name for a vault, taking precedence in getAggregatedVaultStates.
+     *         Intended for legacy vaults whose implementation predates the on-chain institutionName field.
+     * @param vault Vault address to override.
+     * @param newName New human-readable institution name.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidConfig If newName is empty.
+     * @custom:error InstitutionNameUnchanged If newName equals the current override.
+     * @custom:event InstitutionNameOverrideUpdated
+     */
+    function setInstitutionNameOverride(
+        address vault,
+        string calldata newName
+    ) external;
+
     // ──────────────────────────────────────────────────────────────────────
     // Registry & Views
     // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Returns the override display name for a vault ("" if none set).
+     * @param vault Vault address.
+     * @return The override institution name.
+     */
+    function institutionNameOverride(
+        address vault
+    ) external view returns (string memory);
 
     /**
      * @notice Whether a vault is registered.

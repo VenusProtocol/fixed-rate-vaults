@@ -70,8 +70,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     /// @notice Per-institution deploy counter (for CREATE2 salt).
     mapping(address => uint256) public institutionNonce;
 
+    /// @notice Override display name, used for legacy vaults whose on-chain getter reverts.
+    ///         Takes precedence in getAggregatedVaultStates when non-empty.
+    mapping(address => string) public institutionNameOverride;
+
     /// @dev Reserved storage gap for future upgrades.
-    uint256[40] private __gap;
+    uint256[39] private __gap;
 
     // ──────────────────────────────────────────────────────────────────────
     // Events
@@ -88,6 +92,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     event LiquidationIncentiveUpdated(address indexed vault, uint256 newLI);
     event LatePenaltyRateUpdated(address indexed vault, uint256 newRate);
     event InstitutionNameUpdated(address indexed vault, string oldName, string newName);
+    event InstitutionNameOverrideUpdated(address indexed vault, string oldName, string newName);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -167,7 +172,9 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @param _riskConfig Risk parameters.
      * @param _name ERC-20 share token name for the deployed vault.
      * @param _symbol ERC-20 share token symbol for the deployed vault.
+     * @param _institutionName Human-readable institution label stored on the vault.
      * @return vault Deployed vault address.
+     * @custom:error InvalidConfig If _institutionName is empty.
      * @custom:event VaultCreated
      */
     function createVault(
@@ -175,10 +182,12 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         InstitutionalConfig calldata _instConfig,
         RiskConfig calldata _riskConfig,
         string calldata _name,
-        string calldata _symbol
+        string calldata _symbol,
+        string calldata _institutionName
     ) external returns (address vault) {
-        _checkAccessAllowed("createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)");
+        _checkAccessAllowed("createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string,string)");
         _validateVaultConfig(_vaultConfig, _instConfig, _riskConfig);
+        if (bytes(_institutionName).length == 0) revert InvalidConfig();
 
         address institution = _instConfig.institutionOperator;
         bytes32 salt = keccak256(abi.encode(institution, institutionNonce[institution]));
@@ -190,7 +199,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         // Assemble institutional config with tokenId and initialize
         InstitutionalConfig memory assembledInstConfig = _assembleInstConfig(_instConfig, tokenId);
         IInstitutionalLoanVault(vault)
-            .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, _name, _symbol);
+            .initialize(_vaultConfig, assembledInstConfig, _riskConfig, positionToken, _name, _symbol, _institutionName);
 
         // Register
         institutionNonce[institution]++;
@@ -404,10 +413,34 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         _checkAccessAllowed("setInstitutionName(address,string)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
         if (bytes(newName).length == 0) revert InvalidConfig();
-        string memory oldName = IInstitutionalLoanVault(vault).institutionalConfig().institutionName;
+        string memory oldName = IInstitutionalLoanVault(vault).institutionName();
         if (keccak256(bytes(newName)) == keccak256(bytes(oldName))) revert InstitutionNameUnchanged();
         emit InstitutionNameUpdated(vault, oldName, newName);
         IInstitutionalLoanVault(vault).setInstitutionName(newName);
+    }
+
+    /**
+     * @notice Sets an override display name for a vault, taking precedence in getAggregatedVaultStates.
+     *         Intended for legacy vaults whose implementation predates the on-chain institutionName
+     *         field (their vault-level getter reverts, so setInstitutionName cannot be used on them).
+     * @param vault Vault address to override.
+     * @param newName New human-readable institution name.
+     * @custom:error VaultNotRegistered If vault is not in the registry.
+     * @custom:error InvalidConfig If newName is empty.
+     * @custom:error InstitutionNameUnchanged If newName equals the current override.
+     * @custom:event InstitutionNameOverrideUpdated
+     */
+    function setInstitutionNameOverride(
+        address vault,
+        string calldata newName
+    ) external {
+        _checkAccessAllowed("setInstitutionNameOverride(address,string)");
+        if (!isRegistered[vault]) revert VaultNotRegistered();
+        if (bytes(newName).length == 0) revert InvalidConfig();
+        string memory oldName = institutionNameOverride[vault];
+        if (keccak256(bytes(newName)) == keccak256(bytes(oldName))) revert InstitutionNameUnchanged();
+        emit InstitutionNameOverrideUpdated(vault, oldName, newName);
+        institutionNameOverride[vault] = newName;
     }
 
     /**
@@ -531,7 +564,8 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
                 state: vault.state(),
                 institutionOperator: vault.institutionalConfig().institutionOperator,
                 totalRaised: vault.runtime().totalRaised,
-                outstandingDebt: vault.outstandingDebt()
+                outstandingDebt: vault.outstandingDebt(),
+                institutionName: _resolveInstitutionName(v)
             });
         }
         return infos;
@@ -548,6 +582,18 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     // ──────────────────────────────────────────────────────────────────────
     // Internal — View
     // ──────────────────────────────────────────────────────────────────────
+
+    /// @dev Resolves a vault's display name: the override if set, otherwise the vault's on-chain
+    ///      getter. Legacy vaults lacking that getter revert here — set an override for them.
+    /// @param vault Vault address.
+    /// @return name Resolved institution name.
+    function _resolveInstitutionName(
+        address vault
+    ) internal view returns (string memory name) {
+        name = institutionNameOverride[vault];
+        if (bytes(name).length != 0) return name;
+        return IInstitutionalLoanVault(vault).institutionName();
+    }
 
     /// @dev Validates shared vault config, institutional config, and risk config at creation.
     ///      Also probes the resilient oracle to confirm both supply and collateral assets are
@@ -571,7 +617,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
         if (vaultConfig.reserveFactor > MANTISSA_ONE) revert InvalidConfig();
         // Institutional config validation
         if (instConfig.institutionOperator == address(0)) revert InvalidConfig();
-        if (bytes(instConfig.institutionName).length == 0) revert InvalidConfig();
         if (instConfig.idealCollateralAmount == 0) revert InvalidConfig();
         if (instConfig.marginRate == 0 || instConfig.marginRate > MANTISSA_ONE) revert InvalidConfig();
         // Risk config validation
@@ -610,8 +655,7 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
             idealCollateralAmount: c.idealCollateralAmount,
             marginRate: c.marginRate,
             institutionOperator: c.institutionOperator,
-            positionTokenId: tokenId,
-            institutionName: c.institutionName
+            positionTokenId: tokenId
         });
     }
 

@@ -22,7 +22,6 @@ struct InstitutionalConfig {
     // ── Position identity ──
     address institutionOperator; // initial position token recipient
     uint256 positionTokenId; // token representing institution position
-    string institutionName; // human-readable institution label; set at creation, renamable via controller (ACM)
 }
 
 /// @notice Risk parameters — LT/LI/latePenaltyRate mutable via VaultController.
@@ -50,4 +49,5 @@ struct VaultStateInfo {
     address institutionOperator;
     uint256 totalRaised;
     uint256 outstandingDebt;
+    string institutionName; // resolved name: override if set, else the vault's on-chain name ("" for legacy vaults)
 }

@@ -22,6 +22,7 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
      * @param _positionToken InstitutionPositionToken contract reference.
      * @param _name ERC-20 share token name.
      * @param _symbol ERC-20 share token symbol.
+     * @param _institutionName Human-readable institution label.
      */
     function initialize(
         VaultConfig calldata _config,
@@ -29,7 +30,8 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
         RiskConfig calldata _riskConfig,
         IInstitutionPositionToken _positionToken,
         string calldata _name,
-        string calldata _symbol
+        string calldata _symbol,
+        string calldata _institutionName
     ) external;
 
     // ──────────────────────────────────────────────────────────────────────
@@ -258,6 +260,9 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
 
     /// @notice Returns the institutional-specific configuration.
     function institutionalConfig() external view returns (InstitutionalConfig memory);
+
+    /// @notice Human-readable institution label. Reverts on legacy vaults deployed without this field.
+    function institutionName() external view returns (string memory);
 
     /// @notice Returns the risk configuration.
     function riskConfig() external view returns (RiskConfig memory);
