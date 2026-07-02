@@ -53,6 +53,9 @@ for (const [network, chainId] of Object.entries(NETWORKS)) {
   }
 
   const output = { name: network, chainId, addresses };
-  fs.writeFileSync(`deployments/${network}_addresses.json`, JSON.stringify(output, null, 2));
+  // Match the prettier-formatted committed files (trailing newline) so the
+  // CI "new deployments" gate (git diff deployments/) only trips on real
+  // address changes, not on a whitespace-only mismatch every run.
+  fs.writeFileSync(`deployments/${network}_addresses.json`, JSON.stringify(output, null, 2) + "\n");
   console.log(`Exported ${network} -> deployments/${network}_addresses.json`);
 }
