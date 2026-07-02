@@ -776,9 +776,28 @@ contract InstitutionalVaultControllerTest is VaultTestBase {
         controller.setInstitutionNameOverride(makeAddr("unknownVault"), "Legacy Bank");
     }
 
-    function test_setInstitutionNameOverride_revertsIfEmpty() external {
+    function test_setInstitutionNameOverride_clearsWithEmptyString() external {
+        address vaultAddr = _createVault(); // on-chain vault.institutionName() == INSTITUTION_NAME
+        string memory overrideName = "Legacy Bank";
+        controller.setInstitutionNameOverride(vaultAddr, overrideName);
+        // Sanity: override is set and takes precedence.
+        assertEq(controller.institutionNameOverride(vaultAddr), overrideName);
+        assertEq(controller.getAggregatedVaultStates()[0].institutionName, overrideName);
+
+        // Clearing emits old -> "" and unsets the override.
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalVaultController.InstitutionNameOverrideUpdated(vaultAddr, overrideName, "");
+
+        controller.setInstitutionNameOverride(vaultAddr, "");
+
+        assertEq(controller.institutionNameOverride(vaultAddr), "");
+        // Resolution falls back to the vault's on-chain name.
+        assertEq(controller.getAggregatedVaultStates()[0].institutionName, INSTITUTION_NAME);
+    }
+
+    function test_setInstitutionNameOverride_revertsIfClearingWhenUnset() external {
         _createVault();
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        vm.expectRevert(InstitutionalVaultController.InstitutionNameUnchanged.selector);
         controller.setInstitutionNameOverride(address(vault), "");
     }
 
