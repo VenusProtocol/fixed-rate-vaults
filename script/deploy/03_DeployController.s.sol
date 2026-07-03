@@ -41,39 +41,43 @@ contract DeployController is Script {
         if (d.vaultImpl == address(0)) revert VaultImplMissing();
         if (d.positionToken == address(0)) revert PositionTokenMissing();
 
-        // Skip if already deployed on this chain
-        if (d.controllerImpl != address(0)) {
-            controllerImpl = d.controllerImpl;
-            controllerProxy = d.controllerProxy;
-            console.log("VaultControllerImpl already deployed:", controllerImpl);
-            console.log("VaultControllerProxy already deployed:", controllerProxy);
-        } else {
-            // 1. Deploy implementation
+        // Start from whatever is already recorded for this chain, then deploy only what's
+        // missing. Handles every combination (fresh impl + existing proxy, etc.) without the
+        // branches drifting out of sync.
+        controllerImpl = d.controllerImpl;
+        controllerProxy = d.controllerProxy;
+
+        // 1. Deploy implementation if missing
+        if (controllerImpl == address(0)) {
             controllerImpl = address(new InstitutionalVaultController());
             console.log("VaultControllerImpl:", controllerImpl);
+        } else {
+            console.log("VaultControllerImpl already deployed:", controllerImpl);
+        }
 
-            if (d.controllerProxy == address(0)) {
-                // 2. Deploy proxy and initialize in one step
-                bytes memory initData = abi.encodeCall(
-                    InstitutionalVaultController.initialize,
-                    (
-                        d.vaultImpl,
-                        addrs.resilientOracle,
-                        addrs.protocolShareReserve,
-                        addrs.unitroller,
-                        addrs.treasury,
-                        d.positionToken,
-                        addrs.accessControlManager
-                    )
-                );
-                controllerProxy = address(new TransparentUpgradeableProxy(controllerImpl, addrs.proxyAdmin, initData));
-                console.log("VaultControllerProxy:", controllerProxy);
-            }
+        // 2. Deploy proxy and initialize in one step if missing
+        if (controllerProxy == address(0)) {
+            bytes memory initData = abi.encodeCall(
+                InstitutionalVaultController.initialize,
+                (
+                    d.vaultImpl,
+                    addrs.resilientOracle,
+                    addrs.protocolShareReserve,
+                    addrs.unitroller,
+                    addrs.treasury,
+                    d.positionToken,
+                    addrs.accessControlManager
+                )
+            );
+            controllerProxy = address(new TransparentUpgradeableProxy(controllerImpl, addrs.proxyAdmin, initData));
+            console.log("VaultControllerProxy:", controllerProxy);
+        } else {
+            console.log("VaultControllerProxy already deployed:", controllerProxy);
         }
 
         // 3. Transfer position token ownership to controller (skip if already transferred)
         address tokenOwner = InstitutionPositionToken(d.positionToken).owner();
-        if (tokenOwner != addrs.normalTimelock) {
+        if (tokenOwner != controllerProxy && tokenOwner != addrs.normalTimelock) {
             InstitutionPositionToken(d.positionToken).transferOwnership(controllerProxy);
             console.log("positionToken.transferOwnership ->", controllerProxy);
         } else {
