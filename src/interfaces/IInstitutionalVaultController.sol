@@ -185,10 +185,10 @@ interface IInstitutionalVaultController is IVaultController {
     /**
      * @notice Sets an override display name for a vault, taking precedence in getAggregatedVaultStates.
      *         Intended for legacy vaults whose implementation predates the on-chain institutionName field.
+     *         Pass an empty string to unset the override and fall back to the vault's on-chain name.
      * @param vault Vault address to override.
-     * @param newName New human-readable institution name.
+     * @param newName New human-readable institution name, or empty string to clear the override.
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidConfig If newName is empty.
      * @custom:error InstitutionNameUnchanged If newName equals the current override.
      * @custom:event InstitutionNameOverrideUpdated
      */

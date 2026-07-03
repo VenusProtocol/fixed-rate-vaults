@@ -423,10 +423,10 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
      * @notice Sets an override display name for a vault, taking precedence in getAggregatedVaultStates.
      *         Intended for legacy vaults whose implementation predates the on-chain institutionName
      *         field (their vault-level getter reverts, so setInstitutionName cannot be used on them).
+     *         Pass an empty string to unset the override and fall back to the vault's on-chain name.
      * @param vault Vault address to override.
-     * @param newName New human-readable institution name.
+     * @param newName New human-readable institution name, or empty string to clear the override.
      * @custom:error VaultNotRegistered If vault is not in the registry.
-     * @custom:error InvalidConfig If newName is empty.
      * @custom:error InstitutionNameUnchanged If newName equals the current override.
      * @custom:event InstitutionNameOverrideUpdated
      */
@@ -436,7 +436,6 @@ contract InstitutionalVaultController is Initializable, AccessControlledV8, IIns
     ) external {
         _checkAccessAllowed("setInstitutionNameOverride(address,string)");
         if (!isRegistered[vault]) revert VaultNotRegistered();
-        if (bytes(newName).length == 0) revert InvalidConfig();
         string memory oldName = institutionNameOverride[vault];
         if (keccak256(bytes(newName)) == keccak256(bytes(oldName))) revert InstitutionNameUnchanged();
         emit InstitutionNameOverrideUpdated(vault, oldName, newName);
