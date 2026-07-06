@@ -1,3 +1,9 @@
+## [1.0.0-dev.3](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.2...v1.0.0-dev.3) (2026-07-06)
+
+### Bug Fixes
+
+* disable provenance for private project ([ec81d05](https://github.com/VenusProtocol/fixed-rate-vaults/commit/ec81d0580c7bace758fcb5a3cd1ac52c74aaaaa5))
+
 ## [1.0.0-dev.2](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.1...v1.0.0-dev.2) (2026-07-06)
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "@venusprotocol/fixed-rate-vaults",
-  "version": "1.0.0-dev.2",
+  "version": "1.0.0-dev.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VenusProtocol/fixed-rate-vaults.git"
