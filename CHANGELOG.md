@@ -1,3 +1,9 @@
+## [1.0.0-dev.4](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.3...v1.0.0-dev.4) (2026-07-06)
+
+### Bug Fixes
+
+* preserve proxy addresses in deployment export by merging onto existing files ([040068c](https://github.com/VenusProtocol/fixed-rate-vaults/commit/040068cc630a65e0aba40fa2d45a103495221447))
+
 ## [1.0.0-dev.3](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.2...v1.0.0-dev.3) (2026-07-06)
 
 ### Bug Fixes
