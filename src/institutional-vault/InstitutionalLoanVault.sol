@@ -50,6 +50,10 @@ contract InstitutionalLoanVault is BaseVault {
     /// @notice InstitutionPositionToken contract — from controller storage.
     IInstitutionPositionToken public positionToken;
 
+    /// @notice Human-readable institution label. Set at creation, renamable via controller (ACM).
+    ///         Standalone (not in InstitutionalConfig) to keep institutionalConfig()'s ABI stable.
+    string public institutionName;
+
     // ──────────────────────────────────────────────────────────────────────
     // Events
     // ──────────────────────────────────────────────────────────────────────
@@ -68,6 +72,7 @@ contract InstitutionalLoanVault is BaseVault {
     event LiquidationThresholdUpdated(uint256 oldLT, uint256 newLT);
     event LiquidationIncentiveUpdated(uint256 oldLI, uint256 newLI);
     event LatePenaltyRateUpdated(uint256 oldRate, uint256 newRate);
+    event InstitutionNameUpdated(string oldName, string newName);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -126,6 +131,7 @@ contract InstitutionalLoanVault is BaseVault {
      * @param positionToken_ InstitutionPositionToken contract reference.
      * @param name_ ERC-20 share token name.
      * @param symbol_ ERC-20 share token symbol.
+     * @param institutionName_ Human-readable institution label.
      */
     function initialize(
         VaultConfig calldata config_,
@@ -133,7 +139,8 @@ contract InstitutionalLoanVault is BaseVault {
         RiskConfig calldata riskConfig_,
         IInstitutionPositionToken positionToken_,
         string calldata name_,
-        string calldata symbol_
+        string calldata symbol_,
+        string calldata institutionName_
     ) external initializer {
         __BaseVault_init(IERC20Upgradeable(address(config_.supplyAsset)), name_, symbol_, msg.sender);
 
@@ -141,6 +148,7 @@ contract InstitutionalLoanVault is BaseVault {
         _instConfig = instConfig_;
         _riskConfig = riskConfig_;
         positionToken = positionToken_;
+        institutionName = institutionName_;
         _runtime.state = VaultState.WaitingForMargin;
     }
 
@@ -257,6 +265,18 @@ contract InstitutionalLoanVault is BaseVault {
     ) external onlyController {
         emit LatePenaltyRateUpdated(_riskConfig.latePenaltyRate, newRate);
         _riskConfig.latePenaltyRate = newRate;
+    }
+
+    /**
+     * @notice Renames the institution. Controller only.
+     * @param newName New human-readable institution name.
+     * @custom:event InstitutionNameUpdated
+     */
+    function setInstitutionName(
+        string calldata newName
+    ) external onlyController {
+        emit InstitutionNameUpdated(institutionName, newName);
+        institutionName = newName;
     }
 
     // ──────────────────────────────────────────────────────────────────────

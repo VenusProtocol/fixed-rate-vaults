@@ -54,6 +54,7 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         assertEq(instCfg.marginRate, MARGIN_RATE);
         assertEq(instCfg.institutionOperator, institution);
         assertGt(instCfg.positionTokenId, 0); // assigned by controller
+        assertEq(vault.institutionName(), INSTITUTION_NAME);
 
         assertEq(rc.liquidationThreshold, LT);
         assertEq(rc.liquidationIncentive, LI);
@@ -69,7 +70,9 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         RiskConfig memory rc = _buildRiskConfig();
 
         vm.expectRevert("Initializable: contract is already initialized");
-        vault.initialize(cfg, instCfg, rc, IInstitutionPositionToken(address(posToken)), "Inst Vault", "IV");
+        vault.initialize(
+            cfg, instCfg, rc, IInstitutionPositionToken(address(posToken)), "Inst Vault", "IV", INSTITUTION_NAME
+        );
     }
 
     function test_openVault_byController() external {
@@ -1285,6 +1288,23 @@ contract InstitutionalLoanVaultTest is VaultTestBase {
         controller.setLatePenaltyRate(address(vault), tooHigh);
     }
 
+    function test_setInstitutionName_valid() external {
+        string memory newName = "Globex Corp";
+
+        vm.expectEmit(true, false, false, true);
+        emit InstitutionalLoanVault.InstitutionNameUpdated(INSTITUTION_NAME, newName);
+
+        controller.setInstitutionName(address(vault), newName);
+
+        assertEq(vault.institutionName(), newName);
+    }
+
+    function test_setInstitutionName_revertsIfNotController() external {
+        vm.prank(lender1);
+        vm.expectRevert(BaseVault.Unauthorized.selector);
+        vault.setInstitutionName("Globex Corp");
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 3I — Oracle Edge Cases
     // ──────────────────────────────────────────────────────────────────────
@@ -1565,7 +1585,7 @@ contract CrossDecimalLiquidationTest is Test {
     function _grantAllPermissions() internal {
         string[15] memory controllerSigs = [
             "acceptPositionTokenOwnership()",
-            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string)",
+            "createVault(VaultConfig,InstitutionalConfig,RiskConfig,string,string,string)",
             "openVault(address)",
             "cancelVault(address)",
             "partialPauseVault(address)",
@@ -1626,7 +1646,7 @@ contract CrossDecimalLiquidationTest is Test {
         RiskConfig memory rc =
             RiskConfig({ liquidationThreshold: LT, liquidationIncentive: LI, latePenaltyRate: LATE_PENALTY_RATE });
 
-        address vaultAddr = controller.createVault(cfg, instCfg, rc, "Inst Vault 6D", "IV6");
+        address vaultAddr = controller.createVault(cfg, instCfg, rc, "Inst Vault 6D", "IV6", "Inst 6D");
         vault = InstitutionalLoanVault(vaultAddr);
     }
 

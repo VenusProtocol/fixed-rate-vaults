@@ -49,4 +49,5 @@ struct VaultStateInfo {
     address institutionOperator;
     uint256 totalRaised;
     uint256 outstandingDebt;
+    string institutionName; // resolved name: override if set, else the vault's on-chain name ("" for legacy vaults)
 }
