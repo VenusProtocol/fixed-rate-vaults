@@ -1,3 +1,18 @@
+## [1.0.0-dev.2](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.1...v1.0.0-dev.2) (2026-07-06)
+
+### Features
+
+* add renamable institutionName to institutional vault config ([a405d07](https://github.com/VenusProtocol/fixed-rate-vaults/commit/a405d079b0787394784d1a09fd2fbe8749ae2534))
+* move institutionName to standalone vault field with controller override for legacy vaults ([69d24e4](https://github.com/VenusProtocol/fixed-rate-vaults/commit/69d24e413992e2575ca6f72193d2e640c238a1a2))
+* updating deployment files ([58e64a3](https://github.com/VenusProtocol/fixed-rate-vaults/commit/58e64a3f7c37071ea909959bb7b7cbcdb81c71f9))
+* updating deployment files ([1f813ec](https://github.com/VenusProtocol/fixed-rate-vaults/commit/1f813ecf5e972c06a74da6985bc54df906ee2b58))
+* updating deployment files ([8aabb08](https://github.com/VenusProtocol/fixed-rate-vaults/commit/8aabb0883232eed9ec95be4543577f3c1878bb37))
+
+### Bug Fixes
+
+* [I02] setInstitutionNameOverride Mistaken Override Cannot Be Undone ([cd804d0](https://github.com/VenusProtocol/fixed-rate-vaults/commit/cd804d0f01db7eabaaec9fa06d0f8e64774f4f57))
+* append trailing newline to deployment export so CI gate only trips on real changes ([9609d17](https://github.com/VenusProtocol/fixed-rate-vaults/commit/9609d174a2c1ed9e43c3b37a5e6462f8cdfea482))
+
 ## 1.0.0-dev.1 (2026-06-30)
 
 ### Features
