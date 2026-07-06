@@ -41,7 +41,15 @@ for (const [network, chainId] of Object.entries(NETWORKS)) {
 
   const implMap = Object.fromEntries(transactions.map((tx) => [tx.contractAddress.toLowerCase(), tx.contractName]));
 
-  const addresses = {};
+  // Overlay onto the already-committed file instead of rebuilding from scratch.
+  // An impl-only upgrade re-broadcasts just the new implementation — the proxy
+  // CREATE is skipped once the proxy exists — so a from-scratch rebuild would
+  // silently drop every previously-recorded proxy. Merging keeps existing
+  // entries and only overwrites the ones this run actually re-created.
+  const outPath = `deployments/${network}_addresses.json`;
+  const existing = fs.existsSync(outPath) ? (JSON.parse(fs.readFileSync(outPath, "utf8")).addresses ?? {}) : {};
+
+  const addresses = { ...existing };
   for (const tx of transactions) {
     if (tx.contractName === "TransparentUpgradeableProxy") {
       const implAddress = tx.arguments[0].toLowerCase();
@@ -56,6 +64,6 @@ for (const [network, chainId] of Object.entries(NETWORKS)) {
   // Match the prettier-formatted committed files (trailing newline) so the
   // CI "new deployments" gate (git diff deployments/) only trips on real
   // address changes, not on a whitespace-only mismatch every run.
-  fs.writeFileSync(`deployments/${network}_addresses.json`, JSON.stringify(output, null, 2) + "\n");
+  fs.writeFileSync(outPath, JSON.stringify(output, null, 2) + "\n");
   console.log(`Exported ${network} -> deployments/${network}_addresses.json`);
 }
