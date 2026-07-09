@@ -15,6 +15,7 @@ contract CustodyReceiptTokenTest is Test {
 
     address internal minter;
     address internal burner;
+    address internal pauser;
     address internal alice;
     address internal bob;
 
@@ -22,10 +23,13 @@ contract CustodyReceiptTokenTest is Test {
     string internal constant TOKEN_SYMBOL = "vceBTC";
     string internal constant MINT_SIG = "mint(address,uint256)";
     string internal constant BURN_SIG = "burn(address,uint256)";
+    string internal constant PAUSE_SIG = "pause()";
+    string internal constant UNPAUSE_SIG = "unpause()";
 
     function setUp() external {
         minter = makeAddr("minter");
         burner = makeAddr("burner");
+        pauser = makeAddr("pauser");
         alice = makeAddr("alice");
         bob = makeAddr("bob");
 
@@ -40,6 +44,23 @@ contract CustodyReceiptTokenTest is Test {
         uint8 decimals_
     ) internal returns (CustodyReceiptToken) {
         return new CustodyReceiptToken(TOKEN_NAME, TOKEN_SYMBOL, decimals_, address(acm));
+    }
+
+    /// @dev Mints `amount` to `to` through the ACM-gated mint path.
+    function _mintTo(
+        address to,
+        uint256 amount
+    ) internal {
+        acm.giveCallPermission(address(0), MINT_SIG, minter);
+        vm.prank(minter);
+        token.mint(to, amount);
+    }
+
+    /// @dev Pauses transfers through the ACM-gated pause path.
+    function _pause() internal {
+        acm.giveCallPermission(address(0), PAUSE_SIG, pauser);
+        vm.prank(pauser);
+        token.pause();
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -162,5 +183,126 @@ contract CustodyReceiptTokenTest is Test {
     function test_renounceOwnership_isNoOpAndKeepsCurrentOwner() external {
         token.renounceOwnership();
         assertEq(token.owner(), address(this));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // pause() / unpause() — ACM-gated emergency transfer switch.
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_paused_isFalseByDefault() external view {
+        assertFalse(token.paused());
+    }
+
+    function test_pause_revertsWithUnauthorizedWhenCallerHasNoPermission() external {
+        vm.prank(pauser);
+        vm.expectRevert(CustodyReceiptToken.Unauthorized.selector);
+        token.pause();
+    }
+
+    function test_pause_pausesAndEmitsWhenCallerIsAllowed() external {
+        acm.giveCallPermission(address(0), PAUSE_SIG, pauser);
+
+        vm.expectEmit(true, false, false, true, address(token));
+        emit CustodyReceiptToken.Paused(pauser);
+        vm.prank(pauser);
+        token.pause();
+
+        assertTrue(token.paused());
+    }
+
+    function test_pause_revertsWhenAlreadyPaused() external {
+        _pause();
+
+        acm.giveCallPermission(address(0), PAUSE_SIG, pauser);
+        vm.prank(pauser);
+        vm.expectRevert(CustodyReceiptToken.AlreadyPaused.selector);
+        token.pause();
+    }
+
+    function test_unpause_revertsWithUnauthorizedWhenCallerHasNoPermission() external {
+        _pause();
+
+        vm.prank(alice);
+        vm.expectRevert(CustodyReceiptToken.Unauthorized.selector);
+        token.unpause();
+    }
+
+    function test_unpause_unpausesAndEmitsWhenCallerIsAllowed() external {
+        _pause();
+        acm.giveCallPermission(address(0), UNPAUSE_SIG, pauser);
+
+        vm.expectEmit(true, false, false, true, address(token));
+        emit CustodyReceiptToken.Unpaused(pauser);
+        vm.prank(pauser);
+        token.unpause();
+
+        assertFalse(token.paused());
+    }
+
+    function test_unpause_revertsWhenNotPaused() external {
+        acm.giveCallPermission(address(0), UNPAUSE_SIG, pauser);
+        vm.prank(pauser);
+        vm.expectRevert(CustodyReceiptToken.NotPaused.selector);
+        token.unpause();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Transfer gating while paused — mint and burn stay available.
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_transfer_revertsWhilePaused() external {
+        _mintTo(alice, 10e18);
+        _pause();
+
+        vm.prank(alice);
+        vm.expectRevert(CustodyReceiptToken.ActionPaused.selector);
+        token.transfer(bob, 1e18);
+    }
+
+    function test_transferFrom_revertsWhilePaused() external {
+        _mintTo(alice, 10e18);
+        vm.prank(alice);
+        token.approve(bob, 1e18);
+        _pause();
+
+        vm.prank(bob);
+        vm.expectRevert(CustodyReceiptToken.ActionPaused.selector);
+        token.transferFrom(alice, bob, 1e18);
+    }
+
+    function test_mint_succeedsWhilePaused() external {
+        _pause();
+
+        _mintTo(alice, 5e18);
+
+        assertEq(token.balanceOf(alice), 5e18);
+        assertEq(token.totalSupply(), 5e18);
+    }
+
+    function test_burn_succeedsWhilePaused() external {
+        _mintTo(alice, 5e18);
+        _pause();
+
+        acm.giveCallPermission(address(0), BURN_SIG, burner);
+        vm.prank(burner);
+        token.burn(alice, 5e18);
+
+        assertEq(token.balanceOf(alice), 0);
+        assertEq(token.totalSupply(), 0);
+    }
+
+    function test_transfer_succeedsAfterUnpause() external {
+        _mintTo(alice, 10e18);
+        _pause();
+
+        acm.giveCallPermission(address(0), UNPAUSE_SIG, pauser);
+        vm.prank(pauser);
+        token.unpause();
+
+        vm.prank(alice);
+        token.transfer(bob, 1e18);
+
+        assertEq(token.balanceOf(bob), 1e18);
+        assertEq(token.balanceOf(alice), 9e18);
     }
 }
