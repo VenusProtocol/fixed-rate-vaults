@@ -67,6 +67,7 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
         uint8 decimals_,
         address accessControlManager_
     ) ERC20(name_, symbol_) {
+        _ensureNonZeroAddress(accessControlManager_);
         accessControlManager = accessControlManager_;
         _decimals = decimals_;
     }
@@ -135,14 +136,11 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
      * @param newAccessControlManager_ New address for the access control manager.
      * @custom:access Only owner.
      * @custom:event Emits NewAccessControlManager.
-     * @custom:error ZeroAddressNotAllowed is thrown when `newAccessControlManager_` is the zero address.
      */
     function setAccessControlManager(
         address newAccessControlManager_
     ) external onlyOwner {
-        if (newAccessControlManager_ == address(0)) {
-            revert ZeroAddressNotAllowed();
-        }
+        _ensureNonZeroAddress(newAccessControlManager_);
         emit NewAccessControlManager(accessControlManager, newAccessControlManager_);
         accessControlManager = newAccessControlManager_;
     }
@@ -188,6 +186,19 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
     ) internal view {
         if (!IAccessControlManagerV8(accessControlManager).isAllowedToCall(msg.sender, functionSig_)) {
             revert Unauthorized();
+        }
+    }
+
+    /**
+     * @notice Reverts if `address_` is the zero address.
+     * @param address_ Address to validate.
+     * @custom:error ZeroAddressNotAllowed is thrown when `address_` is the zero address.
+     */
+    function _ensureNonZeroAddress(
+        address address_
+    ) internal pure {
+        if (address_ == address(0)) {
+            revert ZeroAddressNotAllowed();
         }
     }
 }

@@ -75,6 +75,11 @@ contract CustodyReceiptTokenTest is Test {
         assertEq(token.totalSupply(), 0);
     }
 
+    function test_constructor_revertsWhenAcmIsZeroAddress() external {
+        vm.expectRevert(CustodyReceiptToken.ZeroAddressNotAllowed.selector);
+        new CustodyReceiptToken(TOKEN_NAME, TOKEN_SYMBOL, 18, address(0));
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // decimals() override — returns the constructor value instead of the hard-coded 18.
     // ──────────────────────────────────────────────────────────────────────
