@@ -1,7 +1,10 @@
 {
   "name": "@venusprotocol/fixed-rate-vaults",
-  "version": "1.0.0",
-  "repository": "git@github-venus:VenusProtocol/fixed-rate-vaults.git",
+  "version": "1.0.0-dev.4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VenusProtocol/fixed-rate-vaults.git"
+  },
   "author": "",
   "license": "ISC",
   "packageManager": "yarn@3.2.0",
@@ -11,8 +14,7 @@
     "deployments"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "scripts": {
     "prepare": "husky",
@@ -21,6 +23,8 @@
     "format:check": "forge fmt --check && prettier --check \"**/*.{js,json,md,ts,yaml,yml}\"",
     "build": "forge build --sizes",
     "test": "forge test -vvv",
+    "export-deployments": "node scripts/export-deployments.js",
+    "export-abis": "node scripts/export-abis.js",
     "coverage": "forge coverage --report lcov",
     "semantic-release": "semantic-release"
   },
@@ -32,7 +36,7 @@
     "conventional-changelog-conventionalcommits": "^8.0.0",
     "husky": "^9.1.7",
     "prettier": "^3.8.1",
-    "semantic-release": "^24.2.1",
+    "semantic-release": "^25.0.2",
     "solhint": "^6.0.3"
   }
 }

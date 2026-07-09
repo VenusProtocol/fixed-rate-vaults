@@ -1,4 +1,6 @@
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
 @venusprotocol/governance-contracts/=lib/governance-contracts/
+@venusprotocol/oracle/=lib/oracle/
 forge-std/=lib/forge-std/src/
+@chainlink/contracts/=lib/chainlink/

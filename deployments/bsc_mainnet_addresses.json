@@ -1,0 +1,12 @@
+{
+  "name": "bsc_mainnet",
+  "chainId": 56,
+  "addresses": {
+    "InstitutionalLoanVault": "0xc25b2b657d24380edd1a1cff5296385541e85204",
+    "InstitutionPositionToken": "0x3ed56f6937fc8549f9325405d1e8e650739647fa",
+    "InstitutionalVaultController": "0xbd9df626c642591cef3612586cc5e45e9767360f",
+    "InstitutionalVaultControllerProxy": "0x6d9e91cb766259af42619c14c994e694e57e6e85",
+    "LiquidationAdapter": "0xdc888d97d6cba15d2733ce14bf292f8ae6e0450e",
+    "LiquidationAdapterProxy": "0x17a6222fb8b4b6d852ca54f5bc376a6a2c6224bd"
+  }
+}

@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity 0.8.25;
+
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+/// @notice Two-level pause system: Partial blocks general operations; Complete blocks everything.
+enum PauseLevel {
+    Unpaused, // 0 — normal operation
+    Partial, // 1 — blocks deposits, collateral ops, borrowing; repay + liquidation still work
+    Complete // 2 — blocks everything including repay and liquidation
+}
+
+/// @notice Shared vault lifecycle states — single enum for all vault types (Institutional Vault, Ceffu).
+///         Each vault type uses a subset; unused states are simply skipped in transitions.
+enum VaultState {
+    WaitingForMargin, // 0 — Institutional Vault: awaiting institution margin deposit; Ceffu: skipped
+    MarginDeposited, // 1 — Institutional Vault: margin in, awaiting open; Ceffu: skipped
+    Fundraising, // 2 — suppliers deposit supply asset (both)
+    InstitutionConfirmation, // 3 — reserved for subcontract use (e.g. Ceffu PendingFill)
+    Lock, // 4 — funds committed, interest accruing (both)
+    PendingSettlement, // 5 — maturity reached, awaiting repayment (both)
+    SettlementDeadlineExceeded, // 6 — settlement deadline passed with outstanding debt (both)
+    Matured, // 7 — settlement complete, shares redeemable (both)
+    Failed, // 8 — fundraising below min cap OR institution default (both; Ceffu: Cancelled)
+    Liquidated, // 9 — Institutional Vault: bad-debt rescue; Ceffu: N/A
+    Closed // 10 — governance delisted; vault transitions here on closeVault(); all operations blocked
+}
+
+/// @notice Shared immutable configuration set once at vault initialization.
+///         Fields grouped by domain: asset, rates, caps, timing.
+struct VaultConfig {
+    // ── Asset ──
+    IERC20 supplyAsset;
+    // ── Rates ──
+    uint256 fixedAPY; // basis points (800 = 8%)
+    uint256 reserveFactor; // mantissa (0.1e18 = 10%)
+    // ── Caps ──
+    uint256 minBorrowCap;
+    uint256 maxBorrowCap;
+    uint256 minSupplierDeposit; // minimum deposit in supply asset units; 0 = disable
+    // ── Timing ──
+    uint40 openDuration;
+    uint40 lockDuration;
+    uint40 settlementWindow;
+}
+
+/// @notice Shared runtime state that changes as the vault progresses through its lifecycle.
+///         Fields grouped by domain: lifecycle, timing, accounting, flags.
+struct VaultRuntime {
+    // ── Lifecycle ──
+    VaultState state;
+    // ── Timing ──
+    uint40 openStartTime;
+    uint40 openEndTime;
+    uint40 lockStartTime;
+    uint40 lockEndTime;
+    uint40 settlementDeadline;
+    // ── Accounting ──
+    uint256 totalRaised;
+    uint256 totalDebt; // live outstanding debt; set to interest at Lock, += totalRaised on claimRaisedFunds, -=
+    // repayments
+    uint256 settlementAmount;
+    // ── Flags ──
+    bool fundsWithdrawn; // true after claimRaisedFunds() — guards against double-claim
+    bool protocolShareSettled; // true after _settleProtocolShare()
+}
