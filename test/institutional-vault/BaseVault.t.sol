@@ -2,6 +2,7 @@
 pragma solidity 0.8.25;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
@@ -244,6 +245,16 @@ contract BaseVaultTest is Test {
         return (interest * RESERVE_FACTOR) / MANTISSA_ONE;
     }
 
+    /// @dev Asserts no ConsentRecorded event is present in the recorded logs. Call vm.recordLogs() first.
+    function _assertNoConsentRecorded() internal view {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 consentTopic = keccak256("ConsentRecorded(address,address,bytes32)");
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length == 0) continue;
+            assertTrue(logs[i].topics[0] != consentTopic, "ConsentRecorded should not be emitted");
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // 2A — ERC-4626 Deposits
     // ──────────────────────────────────────────────────────────────────────
@@ -450,11 +461,11 @@ contract BaseVaultTest is Test {
         vm.startPrank(lender1);
         supply.approve(address(vault), depositAmount);
 
-        // Underlying ERC-4626 Deposit fires first, then the consent record.
-        vm.expectEmit(true, true, true, true);
-        emit IERC4626Upgradeable.Deposit(lender1, lender1, depositAmount, expectedShares);
+        // Consent record is emitted first (at the start of the wrapper), then the ERC-4626 Deposit.
         vm.expectEmit(true, true, true, true);
         emit BaseVault.ConsentRecorded(lender1, lender1, CONSENT_HASH);
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender1, depositAmount, expectedShares);
         uint256 shares = vault.depositWithConsent(depositAmount, lender1, CONSENT_HASH);
         vm.stopPrank();
 
@@ -476,9 +487,9 @@ contract BaseVaultTest is Test {
         supply.approve(address(vault), depositAmount);
 
         vm.expectEmit(true, true, true, true);
-        emit IERC4626Upgradeable.Deposit(lender1, lender2, depositAmount, expectedShares);
-        vm.expectEmit(true, true, true, true);
         emit BaseVault.ConsentRecorded(lender1, lender2, CONSENT_HASH);
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender2, depositAmount, expectedShares);
         uint256 shares = vault.depositWithConsent(depositAmount, lender2, CONSENT_HASH);
         vm.stopPrank();
 
@@ -487,18 +498,22 @@ contract BaseVaultTest is Test {
         assertEq(vault.balanceOf(lender1), 0);
     }
 
-    function test_depositWithConsent_revertsOnZeroHash() external {
+    function test_depositWithConsent_emptyHashSkipsEvent() external {
         uint256 depositAmount = 100e18;
+        uint256 expectedShares = vault.previewDeposit(depositAmount);
         supply.mint(lender1, depositAmount);
         vm.startPrank(lender1);
         supply.approve(address(vault), depositAmount);
-        vm.expectRevert(BaseVault.InvalidConsentHash.selector);
-        vault.depositWithConsent(depositAmount, lender1, bytes32(0));
+
+        vm.recordLogs();
+        uint256 shares = vault.depositWithConsent(depositAmount, lender1, bytes32(0));
         vm.stopPrank();
 
-        // Zero-hash check fires before funds move: nothing was pulled.
-        assertEq(supply.balanceOf(lender1), depositAmount);
-        assertEq(vault.runtime().totalRaised, 0);
+        // Empty hash: the deposit still succeeds, but no consent is recorded.
+        assertEq(shares, expectedShares);
+        assertEq(vault.balanceOf(lender1), expectedShares);
+        assertEq(vault.runtime().totalRaised, depositAmount);
+        _assertNoConsentRecorded();
     }
 
     function test_depositWithConsent_revertsIfNotFundraising() external {
@@ -521,9 +536,9 @@ contract BaseVaultTest is Test {
         supply.approve(address(vault), expectedAssets);
 
         vm.expectEmit(true, true, true, true);
-        emit IERC4626Upgradeable.Deposit(lender1, lender1, expectedAssets, sharesToMint);
-        vm.expectEmit(true, true, true, true);
         emit BaseVault.ConsentRecorded(lender1, lender1, CONSENT_HASH);
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender1, expectedAssets, sharesToMint);
         uint256 assets = vault.mintWithConsent(sharesToMint, lender1, CONSENT_HASH);
         vm.stopPrank();
 
@@ -532,18 +547,22 @@ contract BaseVaultTest is Test {
         assertEq(vault.runtime().totalRaised, expectedAssets);
     }
 
-    function test_mintWithConsent_revertsOnZeroHash() external {
+    function test_mintWithConsent_emptyHashSkipsEvent() external {
         uint256 sharesToMint = 100e18;
         uint256 expectedAssets = vault.previewMint(sharesToMint);
         supply.mint(lender1, expectedAssets);
         vm.startPrank(lender1);
         supply.approve(address(vault), expectedAssets);
-        vm.expectRevert(BaseVault.InvalidConsentHash.selector);
-        vault.mintWithConsent(sharesToMint, lender1, bytes32(0));
+
+        vm.recordLogs();
+        uint256 assets = vault.mintWithConsent(sharesToMint, lender1, bytes32(0));
         vm.stopPrank();
 
-        assertEq(supply.balanceOf(lender1), expectedAssets);
-        assertEq(vault.runtime().totalRaised, 0);
+        // Empty hash: the mint still succeeds, but no consent is recorded.
+        assertEq(assets, expectedAssets);
+        assertEq(vault.balanceOf(lender1), sharesToMint);
+        assertEq(vault.runtime().totalRaised, expectedAssets);
+        _assertNoConsentRecorded();
     }
 
     function test_mintWithConsent_revertsIfNotFundraising() external {
