@@ -19,7 +19,7 @@ library InstitutionalVaultDeployments {
 
     function bscMainnet() internal pure returns (Deployments memory) {
         return Deployments({
-            vaultImpl: 0xC25b2B657D24380eDd1a1Cff5296385541e85204,
+            vaultImpl: 0xe87A1eFCED88bBddf8CCF78EfB3bCF62cFdd5bdC,
             positionToken: 0x3Ed56f6937fc8549f9325405d1e8E650739647Fa,
             controllerImpl: 0xBD9df626c642591cef3612586CC5e45E9767360f,
             controllerProxy: 0x6D9e91cB766259af42619c14c994E694E57e6E85,
