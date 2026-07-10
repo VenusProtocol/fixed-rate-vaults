@@ -62,6 +62,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     event Repaid(uint256 amount, uint256 remainingDebt);
     event PauseLevelSet(PauseLevel oldLevel, PauseLevel newLevel);
     event TokensSwept(address indexed token, address indexed recipient, uint256 amount);
+    event ConsentRecorded(address indexed supplier, address indexed receiver, bytes32 indexed consentHash);
 
     // ──────────────────────────────────────────────────────────────────────
     // Errors
@@ -78,6 +79,7 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
     error NothingToSweep();
     error PartiallyPaused();
     error CompletelyPaused();
+    error InvalidConsentHash();
 
     // ──────────────────────────────────────────────────────────────────────
     // Modifiers
@@ -259,6 +261,46 @@ abstract contract BaseVault is ERC4626Upgradeable, ReentrancyGuardUpgradeable {
         if (sharesClamped == 0) revert ExceedsMaxCap();
         assets = previewMint(sharesClamped);
         _deposit(_msgSender(), receiver, assets, sharesClamped);
+    }
+
+    /**
+     * @notice Deposits supply assets during Fundraising and records the supplier's disclaimer consent
+     *         on-chain in the same transaction. Thin wrapper over {deposit}.
+     * @param assets Requested deposit amount in supply asset units.
+     * @param receiver Address to receive minted shares.
+     * @param consentHash keccak256 hash of the disclaimer content the supplier consented to.
+     * @return shares Actual shares minted (may be less than requested if cap approached).
+     * @custom:error InvalidConsentHash If consentHash is zero.
+     * @custom:event ConsentRecorded Emitted with the supplier, receiver, and consent hash.
+     */
+    function depositWithConsent(
+        uint256 assets,
+        address receiver,
+        bytes32 consentHash
+    ) external returns (uint256 shares) {
+        if (consentHash == bytes32(0)) revert InvalidConsentHash();
+        shares = deposit(assets, receiver);
+        emit ConsentRecorded(_msgSender(), receiver, consentHash);
+    }
+
+    /**
+     * @notice Mints shares during Fundraising and records the supplier's disclaimer consent
+     *         on-chain in the same transaction. Thin wrapper over {mint}.
+     * @param shares Requested shares to mint.
+     * @param receiver Address to receive minted shares.
+     * @param consentHash keccak256 hash of the disclaimer content the supplier consented to.
+     * @return assets Actual supply assets pulled (may be less than requested if cap approached).
+     * @custom:error InvalidConsentHash If consentHash is zero.
+     * @custom:event ConsentRecorded Emitted with the supplier, receiver, and consent hash.
+     */
+    function mintWithConsent(
+        uint256 shares,
+        address receiver,
+        bytes32 consentHash
+    ) external returns (uint256 assets) {
+        if (consentHash == bytes32(0)) revert InvalidConsentHash();
+        assets = mint(shares, receiver);
+        emit ConsentRecorded(_msgSender(), receiver, consentHash);
     }
 
     /**

@@ -160,6 +160,7 @@ contract BaseVaultTest is Test {
     uint256 constant BPS = 10_000;
     uint256 constant MANTISSA_ONE = 1e18;
     uint256 constant YEAR = 365 days;
+    bytes32 constant CONSENT_HASH = keccak256("FRV risk disclaimer v1");
 
     function setUp() external {
         admin = address(this);
@@ -435,6 +436,125 @@ contract BaseVaultTest is Test {
     function test_maxDeposit_zeroOutsideFundraising() external {
         _depositAndLock(MIN_CAP);
         assertEq(vault.maxDeposit(lender1), 0);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // 2A' — Consent-Recorded Supply (depositWithConsent / mintWithConsent)
+    // ──────────────────────────────────────────────────────────────────────
+
+    function test_depositWithConsent_basic() external {
+        uint256 depositAmount = 100e18;
+        uint256 expectedShares = vault.previewDeposit(depositAmount);
+
+        supply.mint(lender1, depositAmount);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), depositAmount);
+
+        // Underlying ERC-4626 Deposit fires first, then the consent record.
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender1, depositAmount, expectedShares);
+        vm.expectEmit(true, true, true, true);
+        emit BaseVault.ConsentRecorded(lender1, lender1, CONSENT_HASH);
+        uint256 shares = vault.depositWithConsent(depositAmount, lender1, CONSENT_HASH);
+        vm.stopPrank();
+
+        assertEq(shares, expectedShares);
+        assertEq(vault.balanceOf(lender1), expectedShares);
+        assertEq(vault.runtime().totalRaised, depositAmount);
+        assertEq(supply.balanceOf(address(vault)), depositAmount);
+        assertEq(supply.balanceOf(lender1), 0);
+    }
+
+    function test_depositWithConsent_recordsSupplierNotReceiver() external {
+        // Supplier (msg.sender) and receiver differ: the consent record must attribute
+        // consent to the caller, and shares must go to the receiver.
+        uint256 depositAmount = 100e18;
+        uint256 expectedShares = vault.previewDeposit(depositAmount);
+
+        supply.mint(lender1, depositAmount);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), depositAmount);
+
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender2, depositAmount, expectedShares);
+        vm.expectEmit(true, true, true, true);
+        emit BaseVault.ConsentRecorded(lender1, lender2, CONSENT_HASH);
+        uint256 shares = vault.depositWithConsent(depositAmount, lender2, CONSENT_HASH);
+        vm.stopPrank();
+
+        assertEq(shares, expectedShares);
+        assertEq(vault.balanceOf(lender2), expectedShares);
+        assertEq(vault.balanceOf(lender1), 0);
+    }
+
+    function test_depositWithConsent_revertsOnZeroHash() external {
+        uint256 depositAmount = 100e18;
+        supply.mint(lender1, depositAmount);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), depositAmount);
+        vm.expectRevert(BaseVault.InvalidConsentHash.selector);
+        vault.depositWithConsent(depositAmount, lender1, bytes32(0));
+        vm.stopPrank();
+
+        // Zero-hash check fires before funds move: nothing was pulled.
+        assertEq(supply.balanceOf(lender1), depositAmount);
+        assertEq(vault.runtime().totalRaised, 0);
+    }
+
+    function test_depositWithConsent_revertsIfNotFundraising() external {
+        _depositAndLock(MIN_CAP); // advances to Lock
+
+        supply.mint(lender2, 100e18);
+        vm.startPrank(lender2);
+        supply.approve(address(vault), 100e18);
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        vault.depositWithConsent(100e18, lender2, CONSENT_HASH);
+        vm.stopPrank();
+    }
+
+    function test_mintWithConsent_basic() external {
+        uint256 sharesToMint = 100e18;
+        uint256 expectedAssets = vault.previewMint(sharesToMint);
+
+        supply.mint(lender1, expectedAssets);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), expectedAssets);
+
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626Upgradeable.Deposit(lender1, lender1, expectedAssets, sharesToMint);
+        vm.expectEmit(true, true, true, true);
+        emit BaseVault.ConsentRecorded(lender1, lender1, CONSENT_HASH);
+        uint256 assets = vault.mintWithConsent(sharesToMint, lender1, CONSENT_HASH);
+        vm.stopPrank();
+
+        assertEq(assets, expectedAssets);
+        assertEq(vault.balanceOf(lender1), sharesToMint);
+        assertEq(vault.runtime().totalRaised, expectedAssets);
+    }
+
+    function test_mintWithConsent_revertsOnZeroHash() external {
+        uint256 sharesToMint = 100e18;
+        uint256 expectedAssets = vault.previewMint(sharesToMint);
+        supply.mint(lender1, expectedAssets);
+        vm.startPrank(lender1);
+        supply.approve(address(vault), expectedAssets);
+        vm.expectRevert(BaseVault.InvalidConsentHash.selector);
+        vault.mintWithConsent(sharesToMint, lender1, bytes32(0));
+        vm.stopPrank();
+
+        assertEq(supply.balanceOf(lender1), expectedAssets);
+        assertEq(vault.runtime().totalRaised, 0);
+    }
+
+    function test_mintWithConsent_revertsIfNotFundraising() external {
+        _depositAndLock(MIN_CAP); // advances to Lock
+
+        supply.mint(lender2, 100e18);
+        vm.startPrank(lender2);
+        supply.approve(address(vault), 100e18);
+        vm.expectRevert(BaseVault.InvalidState.selector);
+        vault.mintWithConsent(100e18, lender2, CONSENT_HASH);
+        vm.stopPrank();
     }
 
     // ──────────────────────────────────────────────────────────────────────
