@@ -19,7 +19,7 @@ library InstitutionalVaultDeployments {
 
     function bscMainnet() internal pure returns (Deployments memory) {
         return Deployments({
-            vaultImpl: 0xC25b2B657D24380eDd1a1Cff5296385541e85204,
+            vaultImpl: 0xe87A1eFCED88bBddf8CCF78EfB3bCF62cFdd5bdC,
             positionToken: 0x3Ed56f6937fc8549f9325405d1e8E650739647Fa,
             controllerImpl: 0xBD9df626c642591cef3612586CC5e45E9767360f,
             controllerProxy: 0x6D9e91cB766259af42619c14c994E694E57e6E85,
@@ -30,7 +30,7 @@ library InstitutionalVaultDeployments {
 
     function bscTestnet() internal pure returns (Deployments memory) {
         return Deployments({
-            vaultImpl: 0x97421799419Eb782628e73e7220d8E0A207469a3,
+            vaultImpl: 0xB677627eB4B9D8bfB793966e266C899E7FD484C5,
             positionToken: 0x71dA473257a96e975558C8edD8491AD0880EFCe5,
             controllerImpl: 0xC36dFaCc7a125859C106F29b9F2d874CCF29A55A,
             controllerProxy: 0xf77dED2A00F94e33C392126238360D4642c16Ba2,
