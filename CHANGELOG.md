@@ -1,3 +1,12 @@
+## [1.0.0-dev.5](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.4...v1.0.0-dev.5) (2026-07-14)
+
+### Features
+
+* add consent-hash recording to FRV deposit and mint ([c6bb512](https://github.com/VenusProtocol/fixed-rate-vaults/commit/c6bb51294a5129c90497f78e577dc7d123913290))
+* updating deployment files ([58692d5](https://github.com/VenusProtocol/fixed-rate-vaults/commit/58692d50587cebb98c7ec3a495a8417c8f266bf6))
+* updating deployment files ([fe4eaad](https://github.com/VenusProtocol/fixed-rate-vaults/commit/fe4eaada13ccf400fdc97a66fdfe9bc8c02abc53))
+* updating deployment files ([bd21bc6](https://github.com/VenusProtocol/fixed-rate-vaults/commit/bd21bc671486c990f3f6add846f1f3e416f6a0e6))
+
 ## [1.0.0-dev.4](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.3...v1.0.0-dev.4) (2026-07-06)
 
 ### Bug Fixes
