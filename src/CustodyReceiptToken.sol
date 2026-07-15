@@ -88,6 +88,8 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
 
     /**
      * @notice Destroys `amount_` tokens from `account_`, reducing the total supply.
+     * @dev Unlike ERC20 `burnFrom`, this does not check or consume `account_`'s allowance for the
+     * caller -- access is gated solely by AccessControlManager.
      * @param account_ Address from which the tokens are destroyed.
      * @param amount_ Amount of tokens to be burned.
      * @custom:access Controlled by AccessControlManager.
@@ -154,6 +156,7 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
 
     /**
      * @notice Returns the number of decimals used to get its user representation.
+     * @return The number of decimals the token uses.
      */
     function decimals() public view override returns (uint8) {
         return _decimals;
@@ -178,8 +181,9 @@ contract CustodyReceiptToken is ERC20, Ownable2Step {
     }
 
     /**
-     * @dev Reverts with {Unauthorized} if the caller is not allowed to call `functionSig_`.
+     * @notice Reverts if the caller is not allowed to call `functionSig_`.
      * @param functionSig_ Function signature on which access is to be checked.
+     * @custom:error Unauthorized is thrown when the caller is not allowed to call `functionSig_`.
      */
     function _ensureAllowed(
         string memory functionSig_
