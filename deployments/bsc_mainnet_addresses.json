@@ -7,6 +7,7 @@
     "InstitutionalVaultController": "0xbd9df626c642591cef3612586cc5e45e9767360f",
     "InstitutionalVaultControllerProxy": "0x6d9e91cb766259af42619c14c994e694e57e6e85",
     "LiquidationAdapter": "0xdc888d97d6cba15d2733ce14bf292f8ae6e0450e",
-    "LiquidationAdapterProxy": "0x17a6222fb8b4b6d852ca54f5bc376a6a2c6224bd"
+    "LiquidationAdapterProxy": "0x17a6222fb8b4b6d852ca54f5bc376a6a2c6224bd",
+    "CustodyReceiptToken": "0xab7d138c6e6ff1bfd3ac871d0db08f9442ce927f"
   }
 }
