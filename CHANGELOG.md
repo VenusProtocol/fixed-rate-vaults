@@ -1,3 +1,10 @@
+## [1.0.0-dev.6](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.5...v1.0.0-dev.6) (2026-08-18)
+
+### Features
+
+* add CustodyReceiptToken with deploy script and tests ([234faac](https://github.com/VenusProtocol/fixed-rate-vaults/commit/234faac5fd9bb4812008b03a2d1afd2aa1221cff))
+* updating deployment files ([e1862fe](https://github.com/VenusProtocol/fixed-rate-vaults/commit/e1862fe42f7020736af326d1b5695937e79a10c3))
+
 ## [1.0.0-dev.5](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.4...v1.0.0-dev.5) (2026-07-14)
 
 ### Features
