@@ -21,6 +21,7 @@
     "lint:sol": "solhint 'src/**/*.sol'",
     "format": "forge fmt && prettier --write \"**/*.{js,json,md,ts,yaml,yml}\"",
     "format:check": "forge fmt --check && prettier --check \"**/*.{js,json,md,ts,yaml,yml}\"",
+    "format:cached": "forge fmt && prettier --write --cache \"**/*.{js,json,md,ts,yaml,yml}\"",
     "build": "forge build --sizes",
     "test": "forge test -vvv",
     "export-deployments": "node scripts/export-deployments.js",
