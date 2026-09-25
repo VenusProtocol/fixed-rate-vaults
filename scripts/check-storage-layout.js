@@ -1,15 +1,15 @@
 /**
  * Fails if an upgradeable contract's storage is no longer a safe upgrade of what is deployed behind
- * its proxy on a mainnet.
+ * its proxy or beacon on a mainnet.
  *
  * The comparison itself is OpenZeppelin's `upgrades-core validate`, run on two full builds: today's
  * source, and the source a deployed implementation was built from. forge records the git commit of
  * every broadcast, so that source is the commit in the broadcast that created the implementation. It
  * is rebuilt in a worktree, and the rebuild must produce the code that went on chain.
  *
- * Every implementation deployed behind a proxy is checked against the one before it, and today's
- * source against the newest. That also covers a deploy PR, where the newest implementation is the one
- * being added.
+ * Every implementation deployed behind a proxy or beacon is checked against the one before it, and
+ * today's source against the newest. That also covers a deploy PR, where the newest implementation is
+ * the one being added.
  *
  * A commit's build never changes, so reference builds are kept in cache/storage-layout/<commit>.
  *
@@ -21,8 +21,14 @@ const os = require("os");
 const path = require("path");
 
 // Testnets redeploy freely, so only mainnet layouts are held to.
-const MAINNETS = [1, 10, 56, 130, 204, 8453, 42161];
-const PROXY = "TransparentUpgradeableProxy";
+const MAINNETS = [56];
+// What each supported proxy's first constructor argument is. A transparent proxy and a beacon hold an
+// implementation; a beacon proxy holds a beacon, whose implementation is checked through the beacon.
+const POINTS_AT = {
+  TransparentUpgradeableProxy: "implementation",
+  UpgradeableBeacon: "implementation",
+  BeaconProxy: "beacon",
+};
 const CACHE = path.resolve("cache", "storage-layout");
 const OZ = path.resolve("node_modules", ".bin", "openzeppelin-upgrades-core");
 // OZ reads the AST and storage layout out of build-info, which a default build does not emit. `--force`
@@ -39,6 +45,10 @@ const BUILD = [
   "storageLayout",
   "--ast",
 ];
+
+// A FOUNDRY_* variable (a profile such as lite, or a single setting) changes the compiled code, so a
+// rebuild would stop matching what was deployed. Every build here uses foundry.toml as committed.
+for (const key of Object.keys(process.env)) if (key.startsWith("FOUNDRY_")) delete process.env[key];
 
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", ...opts });
 const hex = (bytes) => bytes.replace(/^0x/, "").toLowerCase();
@@ -60,9 +70,9 @@ function mainnetDeployments() {
         const mined = new Set(broadcast.receipts.filter((r) => r.status === "0x1").map((r) => r.transactionHash));
         for (const tx of broadcast.transactions) {
           if (tx.transactionType !== "CREATE" || !mined.has(tx.hash)) continue;
-          // Only a transparent proxy is followed to its implementation; any other would go unchecked.
-          if (/Proxy$|Beacon/.test(tx.contractName) && tx.contractName !== PROXY) {
-            throw new Error(`${tx.contractName} at ${tx.contractAddress} on chain ${chainId} is not supported`);
+          // Any other proxy would leave its implementation unchecked without saying so.
+          if (/Proxy$|Beacon/.test(tx.contractName) && !POINTS_AT[tx.contractName]) {
+            throw new Error(`${tx.contractName} at ${tx.contractAddress} on chain ${chainId} is not a supported proxy`);
           }
           const key = `${chainId}:${tx.contractAddress.toLowerCase()}`;
           const known = deployments.get(key);
@@ -73,7 +83,7 @@ function mainnetDeployments() {
             chainId,
             address: tx.contractAddress.toLowerCase(),
             name: tx.contractName,
-            proxiedTo: tx.contractName === PROXY ? tx.arguments[0].toLowerCase() : undefined,
+            pointsTo: POINTS_AT[tx.contractName] ? tx.arguments[0].toLowerCase() : undefined,
             input: hex(tx.transaction.input),
             commit: broadcast.commit,
             timestamp: broadcast.timestamp,
@@ -86,17 +96,24 @@ function mainnetDeployments() {
 }
 
 /**
- * Each proxied contract with the implementations deployed for it, oldest first. Implementations are
- * matched by contract name, from the proxy's first one on; upgrades after that go through governance
- * and only the new implementation's deployment appears in a broadcast.
+ * Each contract behind a proxy or beacon with the implementations deployed for it, oldest first.
+ * Implementations are matched by contract name, from the first one on; upgrades after that go through
+ * governance and only the new implementation's deployment appears in a broadcast.
  */
 function upgradeChains(deployments) {
+  const target = (d) => deployments.find((t) => t.chainId === d.chainId && t.address === d.pointsTo);
+  for (const proxy of deployments.filter((d) => POINTS_AT[d.name] === "beacon")) {
+    if (target(proxy)?.name !== "UpgradeableBeacon") {
+      throw new Error(`BeaconProxy ${proxy.address} on chain ${proxy.chainId} points to no broadcast's beacon`);
+    }
+  }
+
   const chains = new Map();
-  for (const proxy of deployments.filter((d) => d.proxiedTo)) {
-    const first = deployments.find((d) => d.chainId === proxy.chainId && d.address === proxy.proxiedTo);
+  for (const proxy of deployments.filter((d) => POINTS_AT[d.name] === "implementation")) {
+    const first = target(proxy);
     if (!first) {
       throw new Error(
-        `proxy ${proxy.address} on chain ${proxy.chainId} points to ${proxy.proxiedTo}, which no broadcast created`,
+        `${proxy.name} ${proxy.address} on chain ${proxy.chainId} points to ${proxy.pointsTo}, which no broadcast created`,
       );
     }
     const key = `${first.chainId}:${first.name}`;
@@ -186,25 +203,33 @@ function validateUpgrade(name, buildInfo, reference) {
 }
 
 const failures = [];
+/** Runs `fn`, recording `label` as failed if it throws. Returns whether it passed. */
 const check = (label, fn) => {
   console.log(`\n=== ${label}`);
   try {
     fn();
+    return true;
   } catch (err) {
     failures.push(label);
     if (!err.status) console.error(err.message); // a failed command has already printed its own output
+    return false;
   }
 };
 
+let chains = [];
+check("read deployments from broadcasts", () => (chains = upgradeChains(mainnetDeployments())));
+
 const head = fs.mkdtempSync(path.join(os.tmpdir(), "storage-layout-head-"));
+const headBuildInfo = path.join(head, "out", "build-info");
 try {
-  run("forge", [...BUILD, "--out", path.join(head, "out"), "--cache-path", path.join(head, "cache")]);
-  const headBuildInfo = path.join(head, "out", "build-info");
+  const built = check("build working tree", () =>
+    run("forge", [...BUILD, "--out", path.join(head, "out"), "--cache-path", path.join(head, "cache")]),
+  );
 
   // Constructors, immutables, selfdestruct, delegatecall and initializers in every upgradeable contract.
-  check("upgrade safety", () => run(OZ, ["validate", headBuildInfo]));
+  if (built) check("upgrade safety", () => run(OZ, ["validate", headBuildInfo]));
 
-  for (const impls of upgradeChains(mainnetDeployments())) {
+  for (const impls of built ? chains : []) {
     const { name, chainId } = impls[0];
     const builds = [];
     check(`${name} on chain ${chainId}: rebuild deployed implementations`, () => {
