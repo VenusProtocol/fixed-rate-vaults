@@ -12,8 +12,6 @@
  * the one being added.
  *
  * A commit's build never changes, so reference builds are kept in cache/storage-layout/<commit>.
- *
- *   yarn check:storage-layout
  */
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -31,20 +29,6 @@ const POINTS_AT = {
 };
 const CACHE = path.resolve("cache", "storage-layout");
 const OZ = path.resolve("node_modules", ".bin", "openzeppelin-upgrades-core");
-// OZ reads the AST and storage layout out of build-info, which a default build does not emit. `--force`
-// because a stale build-info left next to a fresh one makes OZ refuse to pick between them.
-const BUILD = [
-  "build",
-  "--force",
-  "--skip",
-  "test",
-  "--skip",
-  "script",
-  "--build-info",
-  "--extra-output",
-  "storageLayout",
-  "--ast",
-];
 
 // A FOUNDRY_* variable (a profile such as lite, or a single setting) changes the compiled code, so a
 // rebuild would stop matching what was deployed. Every build here uses foundry.toml as committed.
@@ -52,6 +36,17 @@ for (const key of Object.keys(process.env)) if (key.startsWith("FOUNDRY_")) dele
 
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", ...opts });
 const hex = (bytes) => bytes.replace(/^0x/, "").toLowerCase();
+
+/**
+ * Builds the source folder of the project in `cwd` with what OZ reads: the AST and storage layout in
+ * build-info. Tests and deploy scripts are left out so their helpers never reach OZ. `--force` because a
+ * stale build-info left next to a fresh one makes OZ refuse to pick between them.
+ */
+function forgeBuild(cwd, outputs) {
+  const { src } = JSON.parse(execFileSync("forge", ["config", "--json"], { cwd, encoding: "utf8" }));
+  const flags = ["--force", "--build-info", "--extra-output", "storageLayout", "--ast"];
+  run("forge", ["build", src, ...flags, ...outputs], { cwd });
+}
 
 /** Every mined CREATE in a mainnet broadcast, one per chain and address. */
 function mainnetDeployments() {
@@ -85,6 +80,7 @@ function mainnetDeployments() {
             name: tx.contractName,
             pointsTo: POINTS_AT[tx.contractName] ? tx.arguments[0].toLowerCase() : undefined,
             input: hex(tx.transaction.input),
+            libraries: broadcast.libraries ?? [],
             commit: broadcast.commit,
             timestamp: broadcast.timestamp,
           });
@@ -142,19 +138,14 @@ function referenceBuild(commit) {
   try {
     run("git", ["worktree", "add", "--detach", src, commit]);
     run("git", ["-C", src, "submodule", "update", "--init", "--recursive"]);
-    run(
-      "forge",
-      [
-        ...BUILD,
-        "--out",
-        path.join(partial, "out"),
-        "--build-info-path",
-        path.join(partial, `live-${commit}`),
-        "--cache-path",
-        path.join(partial, "forge-cache"),
-      ],
-      { cwd: src },
-    );
+    forgeBuild(src, [
+      "--out",
+      path.join(partial, "out"),
+      "--build-info-path",
+      path.join(partial, `live-${commit}`),
+      "--cache-path",
+      path.join(partial, "forge-cache"),
+    ]);
   } finally {
     if (fs.existsSync(src)) run("git", ["worktree", "remove", "--force", src]);
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -175,7 +166,20 @@ function assertBuiltFrom(impl, build) {
   if (artifacts.length !== 1)
     throw new Error(`expected one ${impl.name} artifact in ${impl.commit}, found ${artifacts.length}`);
 
-  const built = hex(JSON.parse(fs.readFileSync(artifacts[0], "utf8")).bytecode.object);
+  const { object, linkReferences } = JSON.parse(fs.readFileSync(artifacts[0], "utf8")).bytecode;
+  let built = hex(object);
+  // A linked library's address is only known at deploy time, so the build leaves a placeholder where the
+  // broadcast records the address it linked (`<file>:<library>:<address>`).
+  for (const [file, libraries] of Object.entries(linkReferences ?? {})) {
+    for (const [library, refs] of Object.entries(libraries)) {
+      const linked = impl.libraries.find((l) => l.startsWith(`${file}:${library}:`));
+      if (!linked) throw new Error(`${impl.name} links ${library}, which its broadcast records no address for`);
+      const address = hex(linked.split(":").pop());
+      for (const { start, length } of refs) {
+        built = built.slice(0, start * 2) + address + built.slice((start + length) * 2);
+      }
+    }
+  }
   // The last two bytes give the metadata's length, and the metadata itself opens with a CBOR map. Without
   // that, a misread length could strip the whole bytecode and compare nothing.
   const metadataLength = (parseInt(built.slice(-4), 16) + 2) * 2;
@@ -187,8 +191,33 @@ function assertBuiltFrom(impl, build) {
   }
 }
 
-/** Runs OZ's validate on `buildInfo`, comparing `name` against the same contract in `reference`. */
-function validateUpgrade(name, buildInfo, reference) {
+// Code already deployed can no longer be changed, so an upgrade between two deployed implementations is
+// held to OZ's storage rules only. Its other rules apply to today's source, in the upgrade-safety step.
+const DEPLOYED = [
+  "--unsafeAllow",
+  [
+    "state-variable-assignment",
+    "state-variable-immutable",
+    "external-library-linking",
+    "struct-definition",
+    "enum-definition",
+    "constructor",
+    "delegatecall",
+    "selfdestruct",
+    "missing-public-upgradeto",
+    "internal-function-storage",
+    "missing-initializer",
+    "missing-initializer-call",
+    "duplicate-initializer-call",
+    "incorrect-initializer-order",
+  ].join(","),
+];
+
+/**
+ * Runs OZ's validate on `buildInfo`, comparing `name` against the same contract in `reference`. `extra`
+ * is passed through to validate.
+ */
+function validateUpgrade(name, buildInfo, reference, extra = []) {
   run(OZ, [
     "validate",
     buildInfo,
@@ -199,6 +228,7 @@ function validateUpgrade(name, buildInfo, reference) {
     "--reference",
     `live-${reference.commit}:${name}`,
     "--requireReference",
+    ...extra,
   ]);
 }
 
@@ -223,7 +253,7 @@ const head = fs.mkdtempSync(path.join(os.tmpdir(), "storage-layout-head-"));
 const headBuildInfo = path.join(head, "out", "build-info");
 try {
   const built = check("build working tree", () =>
-    run("forge", [...BUILD, "--out", path.join(head, "out"), "--cache-path", path.join(head, "cache")]),
+    forgeBuild(".", ["--out", path.join(head, "out"), "--cache-path", path.join(head, "cache")]),
   );
 
   // Constructors, immutables, selfdestruct, delegatecall and initializers in every upgradeable contract.
@@ -244,7 +274,7 @@ try {
     for (let i = 1; i < impls.length; i++) {
       if (builds[i].commit === builds[i - 1].commit) continue; // same source, nothing to compare
       check(`${name} on chain ${chainId}: ${impls[i - 1].address} -> ${impls[i].address}`, () =>
-        validateUpgrade(name, builds[i].buildInfo, builds[i - 1]),
+        validateUpgrade(name, builds[i].buildInfo, builds[i - 1], DEPLOYED),
       );
     }
     const live = impls[impls.length - 1];
