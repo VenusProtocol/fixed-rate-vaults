@@ -1,0 +1,43 @@
+name: Upgrade safety
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  storage-layout:
+    name: Storage layout and upgrade safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Deployed implementations are rebuilt from the commits their broadcasts record, so the whole
+          # history has to be present, not just the tip.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Restore reference builds
+        uses: actions/cache@v4
+        with:
+          path: cache/storage-layout
+          # A commit's build never changes, so older entries stay valid; the key only moves when a deploy
+          # adds a broadcast.
+          key: storage-layout-${{ hashFiles('broadcast/*/*/run-*.json') }}
+          restore-keys: storage-layout-
+
+      - name: Check storage layout against deployed implementations
+        run: yarn check:storage-layout
