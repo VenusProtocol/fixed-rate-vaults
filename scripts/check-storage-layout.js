@@ -48,7 +48,7 @@ function forgeBuild(cwd, outputs) {
   run("forge", ["build", src, ...flags, ...outputs], { cwd });
 }
 
-/** Every mined CREATE in a mainnet broadcast, one per chain and address. */
+/** Every mined CREATE in a mainnet broadcast, one per chain and address. Any other creation but a library throws. */
 function mainnetDeployments() {
   const deployments = new Map();
   for (const script of fs.readdirSync("broadcast")) {
@@ -63,8 +63,17 @@ function mainnetDeployments() {
           throw new Error(`${path.join(dir, file)} records no usable commit: ${broadcast.commit}`);
         }
         const mined = new Set(broadcast.receipts.filter((r) => r.status === "0x1").map((r) => r.transactionHash));
+        const libraries = new Set((broadcast.libraries ?? []).map((l) => l.split(":").pop().toLowerCase()));
         for (const tx of broadcast.transactions) {
-          if (tx.transactionType !== "CREATE" || !mined.has(tx.hash)) continue;
+          if (!mined.has(tx.hash)) continue;
+          // forge deploys a linked library by CREATE2. A library holds no storage, so there is nothing to check.
+          if (tx.transactionType === "CREATE2" && libraries.has(tx.contractAddress.toLowerCase())) continue;
+          // Only a top-level CREATE records what is read here. A CREATE2, or a contract created inside a
+          // call, could be a proxy or an implementation that would otherwise drop out without saying so.
+          if (tx.transactionType === "CREATE2" || tx.additionalContracts?.length) {
+            throw new Error(`${tx.hash} on chain ${chainId} creates a contract other than by a top-level CREATE`);
+          }
+          if (tx.transactionType !== "CREATE") continue;
           // Any other proxy would leave its implementation unchecked without saying so.
           if (/Proxy$|Beacon/.test(tx.contractName) && !POINTS_AT[tx.contractName]) {
             throw new Error(`${tx.contractName} at ${tx.contractAddress} on chain ${chainId} is not a supported proxy`);
