@@ -1,3 +1,15 @@
+## [1.0.0-dev.7](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.6...v1.0.0-dev.7) (2026-09-29)
+
+### Features
+
+* check storage layout against deployed implementations in ci ([b2e590e](https://github.com/VenusProtocol/fixed-rate-vaults/commit/b2e590e7e4bc142cf4b00dd4f8796febf3ad576d))
+* follow beacons and beacon proxies in the storage layout check ([1067ada](https://github.com/VenusProtocol/fixed-rate-vaults/commit/1067ada267cb6c8c9f5945dda088980663efbf5f))
+* link libraries and build only sources in the storage layout check ([e01e1f0](https://github.com/VenusProtocol/fixed-rate-vaults/commit/e01e1f0f930a19a3b0eb171166deafbc89d24323))
+
+### Bug Fixes
+
+* fail the storage layout check on creations it cannot read ([5bfecf5](https://github.com/VenusProtocol/fixed-rate-vaults/commit/5bfecf57c0f77cd31c0fcf95700b4c1673f732e0))
+
 ## [1.0.0-dev.6](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.5...v1.0.0-dev.6) (2026-08-18)
 
 ### Features
