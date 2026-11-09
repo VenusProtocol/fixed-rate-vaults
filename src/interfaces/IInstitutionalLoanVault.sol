@@ -100,6 +100,46 @@ interface IInstitutionalLoanVault is IERC4626Upgradeable {
     function updateVaultState() external;
 
     // ──────────────────────────────────────────────────────────────────────
+    // Supplier Functions
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * @notice Deposits supply assets during Fundraising and optionally records the supplier's
+     *         disclaimer consent on-chain in the same transaction.
+     * @param assets Requested deposit amount in supply asset units.
+     * @param receiver Address to receive minted shares.
+     * @param consentHash keccak256 hash of the disclaimer content the supplier consented to.
+     *        Pass bytes32(0) to skip recording — no event is emitted in that case.
+     * @return shares Actual shares minted (may be less than requested if cap approached).
+     * @custom:error InvalidState If vault is not in Fundraising state.
+     * @custom:error ExceedsMaxCap If the clamped deposit amount is zero (vault at capacity).
+     * @custom:event ConsentRecorded Emitted with the supplier, receiver, and consent hash when consentHash is non-zero.
+     */
+    function depositWithConsent(
+        uint256 assets,
+        address receiver,
+        bytes32 consentHash
+    ) external returns (uint256 shares);
+
+    /**
+     * @notice Mints shares during Fundraising and optionally records the supplier's disclaimer
+     *         consent on-chain in the same transaction.
+     * @param shares Requested shares to mint.
+     * @param receiver Address to receive minted shares.
+     * @param consentHash keccak256 hash of the disclaimer content the supplier consented to.
+     *        Pass bytes32(0) to skip recording — no event is emitted in that case.
+     * @return assets Actual supply assets pulled (may be less than requested if cap approached).
+     * @custom:error InvalidState If vault is not in Fundraising state.
+     * @custom:error ExceedsMaxCap If the clamped share amount is zero (vault at capacity).
+     * @custom:event ConsentRecorded Emitted with the supplier, receiver, and consent hash when consentHash is non-zero.
+     */
+    function mintWithConsent(
+        uint256 shares,
+        address receiver,
+        bytes32 consentHash
+    ) external returns (uint256 assets);
+
+    // ──────────────────────────────────────────────────────────────────────
     // Institution Functions
     // ──────────────────────────────────────────────────────────────────────
 
