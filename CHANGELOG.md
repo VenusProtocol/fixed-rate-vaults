@@ -1,3 +1,31 @@
+## [1.0.0-dev.7](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.6...v1.0.0-dev.7) (2026-09-29)
+
+### Features
+
+* check storage layout against deployed implementations in ci ([b2e590e](https://github.com/VenusProtocol/fixed-rate-vaults/commit/b2e590e7e4bc142cf4b00dd4f8796febf3ad576d))
+* follow beacons and beacon proxies in the storage layout check ([1067ada](https://github.com/VenusProtocol/fixed-rate-vaults/commit/1067ada267cb6c8c9f5945dda088980663efbf5f))
+* link libraries and build only sources in the storage layout check ([e01e1f0](https://github.com/VenusProtocol/fixed-rate-vaults/commit/e01e1f0f930a19a3b0eb171166deafbc89d24323))
+
+### Bug Fixes
+
+* fail the storage layout check on creations it cannot read ([5bfecf5](https://github.com/VenusProtocol/fixed-rate-vaults/commit/5bfecf57c0f77cd31c0fcf95700b4c1673f732e0))
+
+## [1.0.0-dev.6](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.5...v1.0.0-dev.6) (2026-08-18)
+
+### Features
+
+* add CustodyReceiptToken with deploy script and tests ([234faac](https://github.com/VenusProtocol/fixed-rate-vaults/commit/234faac5fd9bb4812008b03a2d1afd2aa1221cff))
+* updating deployment files ([e1862fe](https://github.com/VenusProtocol/fixed-rate-vaults/commit/e1862fe42f7020736af326d1b5695937e79a10c3))
+
+## [1.0.0-dev.5](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.0.0-dev.4...v1.0.0-dev.5) (2026-07-14)
+
+### Features
+
+* add consent-hash recording to FRV deposit and mint ([c6bb512](https://github.com/VenusProtocol/fixed-rate-vaults/commit/c6bb51294a5129c90497f78e577dc7d123913290))
+* updating deployment files ([58692d5](https://github.com/VenusProtocol/fixed-rate-vaults/commit/58692d50587cebb98c7ec3a495a8417c8f266bf6))
+* updating deployment files ([fe4eaad](https://github.com/VenusProtocol/fixed-rate-vaults/commit/fe4eaada13ccf400fdc97a66fdfe9bc8c02abc53))
+* updating deployment files ([bd21bc6](https://github.com/VenusProtocol/fixed-rate-vaults/commit/bd21bc671486c990f3f6add846f1f3e416f6a0e6))
+
 ## 1.0.0 (2026-07-09)
 
 ### Features

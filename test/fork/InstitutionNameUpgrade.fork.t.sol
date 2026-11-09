@@ -182,9 +182,11 @@ contract InstitutionNameUpgradeForkTest is Test {
         controller.setInstitutionName(LEGACY_VAULT, "Anything");
     }
 
-    /// @dev setInstitutionNameOverride validations: empty name, unchanged name, and unregistered vault revert.
+    /// @dev setInstitutionNameOverride validations: unchanged name (including clearing an unset override) and
+    ///      unregistered vault revert; an empty string is the documented way to clear an existing override.
     function test_fork_setInstitutionNameOverride_validations() external {
-        vm.expectRevert(InstitutionalVaultController.InvalidConfig.selector);
+        // No override set yet, so "" (the clear value) equals the current value and reverts as unchanged.
+        vm.expectRevert(InstitutionalVaultController.InstitutionNameUnchanged.selector);
         controller.setInstitutionNameOverride(LEGACY_VAULT, "");
 
         controller.setInstitutionNameOverride(LEGACY_VAULT, "Legacy Co");
@@ -193,6 +195,12 @@ contract InstitutionNameUpgradeForkTest is Test {
 
         vm.expectRevert(InstitutionalVaultController.VaultNotRegistered.selector);
         controller.setInstitutionNameOverride(makeAddr("notAVault"), "Ghost");
+
+        // Empty string clears an existing override.
+        vm.expectEmit(true, false, false, true, CONTROLLER);
+        emit InstitutionNameOverrideUpdated(LEGACY_VAULT, "Legacy Co", "");
+        controller.setInstitutionNameOverride(LEGACY_VAULT, "");
+        assertEq(controller.institutionNameOverride(LEGACY_VAULT), "");
     }
 
     // ──────────────────────────────────────────────────────────────────────
