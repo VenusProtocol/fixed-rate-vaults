@@ -35,8 +35,11 @@ for (const [network, chainId] of Object.entries(NETWORKS)) {
   if (broadcastFiles.length === 0) continue;
 
   const transactions = broadcastFiles.flatMap((file) => {
-    const { transactions } = JSON.parse(fs.readFileSync(file, "utf8"));
-    return transactions.filter((tx) => tx.transactionType === "CREATE");
+    const { transactions, receipts = [] } = JSON.parse(fs.readFileSync(file, "utf8"));
+    // forge saves the run before sending, so a CREATE that never landed is still listed. Recording it would
+    // make the custody token deploy script skip that token for good.
+    const mined = new Set(receipts.filter((r) => r.status === "0x1").map((r) => r.transactionHash));
+    return transactions.filter((tx) => tx.transactionType === "CREATE" && mined.has(tx.hash));
   });
 
   const implMap = Object.fromEntries(transactions.map((tx) => [tx.contractAddress.toLowerCase(), tx.contractName]));
