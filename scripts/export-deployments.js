@@ -55,6 +55,9 @@ for (const [network, chainId] of Object.entries(NETWORKS)) {
       const implAddress = tx.arguments[0].toLowerCase();
       const implName = implMap[implAddress] ?? "Unknown";
       addresses[`${implName}Proxy`] = tx.contractAddress;
+    } else if (tx.contractName === "CustodyReceiptToken") {
+      // One deployment per custody token, so key each by its symbol (constructor arg 1).
+      addresses[tx.arguments[1]] = tx.contractAddress;
     } else {
       addresses[tx.contractName] = tx.contractAddress;
     }
