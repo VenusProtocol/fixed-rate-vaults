@@ -23,11 +23,12 @@ contract DeployCustodyReceiptToken is Script {
         uint8 decimals;
     }
 
+    /// @notice Thrown when the script runs on a chain with no deployments file.
+    error UnsupportedChain(uint256 chainId);
+
     function run() public {
         Addresses.NetworkAddresses memory addrs = Addresses.getByChainId(block.chainid);
-        string memory deployments = vm.readFile(
-            block.chainid == 56 ? "deployments/bsc_mainnet_addresses.json" : "deployments/bsc_testnet_addresses.json"
-        );
+        string memory deployments = vm.readFile(_deploymentsFile(block.chainid));
         Token[] memory tokens = _tokens();
 
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -57,5 +58,19 @@ contract DeployCustodyReceiptToken is Script {
         tokens[0] = Token("Ceffu Custody BTC for Venus", "vceBTC", 18);
         // Collateral of the LTP institutional vault
         tokens[1] = Token("Custodian BTC", "ctBTC", 18);
+    }
+
+    /**
+     * @notice Returns the deployments file of `chainId`, read to skip tokens already deployed there.
+     * @param chainId The chain the script runs on.
+     * @return The path of that chain's deployments file.
+     * @custom:error UnsupportedChain if `chainId` is not BSC mainnet (56) or BSC testnet (97).
+     */
+    function _deploymentsFile(
+        uint256 chainId
+    ) internal pure returns (string memory) {
+        if (chainId == 56) return "deployments/bsc_mainnet_addresses.json";
+        if (chainId == 97) return "deployments/bsc_testnet_addresses.json";
+        revert UnsupportedChain(chainId);
     }
 }
