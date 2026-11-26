@@ -1,3 +1,14 @@
+## [1.2.0](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.1.0...v1.2.0) (2026-11-26)
+
+### Features
+
+* add ctBTC to the custody token deploy script and key custody tokens by symbol ([f6d843e](https://github.com/VenusProtocol/fixed-rate-vaults/commit/f6d843ee4e98f234e65ed560b841a7713575e2e4))
+
+### Bug Fixes
+
+* map chain id to deployments file and revert on unknown chains ([66a098f](https://github.com/VenusProtocol/fixed-rate-vaults/commit/66a098f02b96cdcaa8e77bba6b6695456d5b49b1))
+* record only mined CREATEs when exporting deployments ([16d57c8](https://github.com/VenusProtocol/fixed-rate-vaults/commit/16d57c810502762d88c86c410a2aeb31dd908a51))
+
 ## [1.2.0-dev.1](https://github.com/VenusProtocol/fixed-rate-vaults/compare/v1.1.0...v1.2.0-dev.1) (2026-11-18)
 
 ### Features
