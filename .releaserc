@@ -54,26 +54,16 @@
       }
     ],
     [
-      "@semantic-release/changelog",
-      {
-        "changelogFile": "CHANGELOG.md"
-      }
-    ],
-    [
       "@semantic-release/npm",
       {
         "npmPublish": true
       }
     ],
     [
-      "@semantic-release/git",
+      "@semantic-release/github",
       {
-        "assets": [
-          "package.json",
-          "CHANGELOG.md",
-          "deployments/**/*.json"
-        ],
-        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        "successCommentCondition": false,
+        "failCommentCondition": false
       }
     ]
   ],
